@@ -6,7 +6,8 @@ const crypto = require('crypto');
 process.removeAllListeners('warning');
 const { DatabaseSync } = require('node:sqlite');
 
-const DB_FILE = process.env.KUMUD_DB || path.join(__dirname, '..', 'data', 'kumud.db');
+// Vercel's filesystem is read-only except /tmp (ephemeral: data resets on cold start).
+const DB_FILE = process.env.KUMUD_DB || (process.env.VERCEL ? '/tmp/kumud.db' : path.join(__dirname, '..', 'data', 'kumud.db'));
 if (DB_FILE !== ':memory:') fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
 const db = new DatabaseSync(DB_FILE);
 db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');

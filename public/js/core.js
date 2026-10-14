@@ -125,3 +125,18 @@ export function onSubmit(form, handler, busyLabel) {
     finally { busy(btn, false); }
   });
 }
+
+/** Opens Razorpay Checkout for a pending order; resolves true when paid and verified, false when dismissed. */
+export async function payOnline(number, emailQs = '') {
+  if (!window.Razorpay) await new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://checkout.razorpay.com/v1/checkout.js'; sc.onload = ok; sc.onerror = () => no(new Error('Could not load the payment window.')); document.head.appendChild(sc); });
+  const c = await post(`/orders/${number}/pay${emailQs}`);
+  return new Promise((resolve, reject) => {
+    const rz = new window.Razorpay({
+      key: c.keyId, order_id: c.orderId, amount: c.amount, currency: 'INR', name: 'Kumud Boutique', description: 'Order ' + number,
+      prefill: { email: c.email, contact: c.phone }, theme: { color: '#3a1030' },
+      handler: async r => { try { await post(`/orders/${number}/verify${emailQs}`, r); resolve(true); } catch (e) { reject(e); } },
+      modal: { ondismiss: () => resolve(false) }
+    });
+    rz.open();
+  });
+}

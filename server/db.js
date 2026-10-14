@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 // additive migrations for databases created by earlier versions
 const hasCol = (t, c) => db.prepare(`PRAGMA table_info(${t})`).all().some(r => r.name === c);
 if (!hasCol('products', 'twin_slug')) db.exec("ALTER TABLE products ADD COLUMN twin_slug TEXT DEFAULT ''");
+if (!hasCol('orders', 'rzp_order_id')) db.exec("ALTER TABLE orders ADD COLUMN rzp_order_id TEXT DEFAULT ''");
 if (!hasCol('orders', 'measurements')) db.exec("ALTER TABLE orders ADD COLUMN measurements TEXT DEFAULT ''");
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {

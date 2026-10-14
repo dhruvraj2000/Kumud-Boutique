@@ -1,0 +1,22 @@
+# Render blueprint: runs the Express server with a persistent disk so orders and accounts survive restarts.
+services:
+  - type: web
+    name: kumud-boutique
+    runtime: node
+    plan: starter            # persistent disks need a paid instance
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/meta
+    envVars:
+      - key: KUMUD_DB
+        value: /var/data/kumud.db
+      - key: ADMIN_PASSWORD
+        sync: false           # you enter this in the Render dashboard
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+    disk:
+      name: kumud-data
+      mountPath: /var/data
+      sizeGB: 1

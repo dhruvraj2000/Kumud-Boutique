@@ -86,7 +86,7 @@ app.get('/api/meta', (req, res) => {
     collections: [...new Set(ps.map(p => p.collection))],
     colors: [...new Set(ps.flatMap(p => p.colors))],
     sizes: ['XS', 'S', 'M', 'L', 'XL'], kidsSizes: ['2Y', '4Y', '6Y', '8Y', '10Y', '12Y'],
-    whatsapp: getSetting('whatsapp'), twinningPercent: twinPct(),
+    whatsapp: getSetting('whatsapp'), twinningPercent: twinPct(), razorpayKeyId: rzpOn() ? rzp().id : '',
     priceMin: Math.min(...ps.map(p => p.price)), priceMax: Math.max(...ps.map(p => p.price)),
     freeShippingMin: FREE_SHIP_MIN, shippingFee: SHIP_FEE, maxQty: MAX_QTY,
     coupons: Object.entries(COUPONS).map(([code, c]) => ({ code, label: c.label }))
@@ -326,8 +326,15 @@ app.post('/api/cart/quote', (req, res, next) => {
 
 /* ---------- orders ---------- */
 const luhn = n => { let s = 0, alt = false; for (let i = n.length - 1; i >= 0; i--) { let d = +n[i]; if (alt) { d *= 2; if (d > 9) d -= 9; } s += d; alt = !alt; } return s % 10 === 0; };
+const rzp = () => ({ id: process.env.RAZORPAY_KEY_ID || '', secret: process.env.RAZORPAY_KEY_SECRET || '' });
+const rzpOn = () => { const k = rzp(); return !!(k.id && k.secret); };
 function readPayment(b) {
   const method = str(b.method, 10);
+  if (method === 'razorpay') {
+    if (!rzpOn()) throw bad('Online payment is not available right now.', 'method');
+    return { method, status: 'pending', ref: 'Razorpay (awaiting payment)' };
+  }
+  if (rzpOn() && (method === 'upi' || method === 'card')) throw bad('Please choose Pay online or Cash on delivery.', 'method');
   if (method === 'cod') return { method, status: 'pending', ref: 'Cash on delivery' };
   if (method === 'upi') {
     const id = str(b.upiId, 60);
@@ -353,7 +360,7 @@ function loadOrder(number) {
   const o = db.prepare('SELECT * FROM orders WHERE number=?').get(number);
   if (!o) return null;
   return {
-    number: o.number, status: o.status, paymentMethod: o.payment_method, paymentStatus: o.payment_status, subtotal: o.subtotal, shipping: o.shipping,
+    number: o.number, status: o.status, paymentMethod: o.payment_method, paymentStatus: o.payment_status, onlinePending: o.payment_method.startsWith('Razorpay') && o.payment_status === 'pending' && o.status !== 'cancelled', subtotal: o.subtotal, shipping: o.shipping,
     discount: o.discount, total: o.total, coupon: o.coupon, address: JSON.parse(o.address), email: o.email, phone: o.phone, notes: o.notes,
     carrier: o.carrier, trackingNo: o.tracking_no, createdAt: o.created_at, userId: o.user_id,
     measurements: o.measurements ? JSON.parse(o.measurements) : null,
@@ -416,6 +423,39 @@ app.get('/api/orders/:number', (req, res, next) => {
   const o = loadOrder(str(req.params.number, 30).toUpperCase());
   if (!canView(req, o)) return next(new HttpError(404, 'We could not find that order. Check the order number and email.'));
   res.json({ order: outOrder(o) });
+});
+app.post('/api/orders/:number/pay', limit('pay', 20, 60000), async (req, res, next) => {
+  try {
+    const row = db.prepare('SELECT * FROM orders WHERE number=?').get(str(req.params.number, 30).toUpperCase());
+    if (!row || !canView(req, loadOrder(row.number))) return next(new HttpError(404, 'Order not found.'));
+    if (!rzpOn()) return next(bad('Online payment is not available right now.'));
+    if (row.payment_status !== 'pending' || row.status === 'cancelled' || !row.payment_method.startsWith('Razorpay')) return next(bad('This order does not need payment.'));
+    const k = rzp();
+    if (!row.rzp_order_id) {
+      const r = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from(k.id + ':' + k.secret).toString('base64') },
+        body: JSON.stringify({ amount: row.total * 100, currency: 'INR', receipt: row.number })
+      });
+      const j = await r.json();
+      if (!r.ok || !j.id) return next(new HttpError(502, 'Could not start the payment. Please try again.'));
+      db.prepare('UPDATE orders SET rzp_order_id=? WHERE id=?').run(j.id, row.id); row.rzp_order_id = j.id;
+    }
+    res.json({ keyId: k.id, orderId: row.rzp_order_id, amount: row.total * 100, number: row.number, email: row.email, phone: row.phone });
+  } catch (e) { next(e); }
+});
+app.post('/api/orders/:number/verify', limit('verify', 20, 60000), (req, res, next) => {
+  const row = db.prepare('SELECT * FROM orders WHERE number=?').get(str(req.params.number, 30).toUpperCase());
+  if (!row || !canView(req, loadOrder(row.number))) return next(new HttpError(404, 'Order not found.'));
+  const payId = str(req.body.razorpay_payment_id, 60), sig = str(req.body.razorpay_signature, 128);
+  if (!rzpOn() || !row.rzp_order_id || str(req.body.razorpay_order_id, 60) !== row.rzp_order_id) return next(bad('Payment details do not match this order.'));
+  const want = crypto.createHmac('sha256', rzp().secret).update(row.rzp_order_id + '|' + payId).digest('hex');
+  const ok = sig.length === want.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want));
+  if (!ok) return next(bad('We could not verify that payment.'));
+  if (row.payment_status === 'pending') tx(() => {
+    db.prepare("UPDATE orders SET payment_status='paid', payment_method=? WHERE id=?").run('Razorpay ' + payId, row.id);
+    db.prepare('INSERT INTO order_events(order_id,status,note) VALUES(?,?,?)').run(row.id, row.status, 'Payment received');
+  });
+  res.json({ order: outOrder(loadOrder(row.number)) });
 });
 app.get('/api/track', limit('track', 20, 60000), (req, res, next) => {
   const o = loadOrder(str(req.query.number, 30).toUpperCase());
@@ -512,7 +552,7 @@ app.get('/api/admin/launch', needAdmin, (req, res) => {
   const items = [
     ['WhatsApp number set', !!getSetting('whatsapp'), 'Admin → Settings. The chat button stays hidden until set.'],
     ['Persistent database', !onVercel, 'On Vercel the SQLite file lives in /tmp and resets. Move to Turso/Neon or host on a server with a disk.'],
-    ['Real payment gateway', false, 'UPI and card payments are simulated. Connect Razorpay before taking real orders.'],
+    ['Real payment gateway', rzpOn(), 'Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to switch checkout from simulated payments to Razorpay.'],
     ['Admin password changed', process.env.ADMIN_PASSWORD ? true : false, 'Set the ADMIN_PASSWORD environment variable; the default is public in the README.'],
     ['Real product details & stock', false, 'Names, prices and descriptions are placeholders until you edit them in Admin → Products.'],
     ['Designer bio & portrait', false, 'The Designer page uses general copy. Send the designer’s real bio and photo to publish it.'],

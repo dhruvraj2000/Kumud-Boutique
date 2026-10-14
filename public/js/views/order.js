@@ -1,4 +1,4 @@
-import { html, render, get, post, money, fmtDate, toast, state } from '../core.js';
+import { payOnline, html, render, get, post, money, fmtDate, toast, state } from '../core.js';
 import { actions } from '../components.js';
 import { timeline, orderItems } from './track.js';
 
@@ -20,7 +20,7 @@ export default async function order({ el, params, query, onLeave }) {
     ${isNew ? html`<div class="success"><svg viewBox="0 0 52 52" class="tick"><circle cx="26" cy="26" r="24"/><path d="M15 27l8 8 14-16"/></svg><h1>Thank you, ${o.address.name.split(' ')[0]}!</h1><p>Your order <b>${o.number}</b> is confirmed. Keep this number to track it — we've noted <b>${o.email}</b> for updates.</p></div>` : html`<nav class="crumbs"><a href="#/account/orders">Orders</a><span>/</span><span>${o.number}</span></nav><h1>Order ${o.number}</h1>`}
     <div class="order-grid">
       <div class="panel"><header class="p-head"><h2>Status</h2><span class="pill st-${o.status}">${o.status.replace(/_/g, ' ')}</span></header>${timeline(o)}
-        ${['placed', 'confirmed'].includes(o.status) ? html`<button class="btn btn-ghost" data-action="cancel-order">Cancel order</button>` : ''}</div>
+        ${o.onlinePending ? html`<button class="btn btn-primary" data-action="pay-order">Pay ${money(o.total)} now</button> ` : ''}${['placed', 'confirmed'].includes(o.status) ? html`<button class="btn btn-ghost" data-action="cancel-order">Cancel order</button>` : ''}</div>
       <div class="panel"><h2>Items</h2>${orderItems(o)}
         <div class="sum-rows"><p><span>Subtotal</span><b>${money(o.subtotal)}</b></p>${o.discount ? html`<p class="disc"><span>Discount ${o.coupon || ''}</span><b>− ${money(o.discount)}</b></p>` : ''}<p><span>Shipping</span><b>${o.shipping ? money(o.shipping) : 'Free'}</b></p><p class="total"><span>Total</span><b>${money(o.total)}</b></p></div>
         <div class="meta2"><div><h3>Delivering to</h3><p>${o.address.name}<br>${o.address.line1}${o.address.line2 ? ', ' + o.address.line2 : ''}<br>${o.address.city}, ${o.address.state} ${o.address.pincode}<br>${o.address.phone}</p></div>
@@ -32,6 +32,9 @@ export default async function order({ el, params, query, onLeave }) {
     if (!confirm('Cancel this order?')) return;
     try { o = (await post(`/orders/${o.number}/cancel${em}`)).order; draw(); toast('Order cancelled'); } catch (e) { toast(e.message, 'warn'); }
   };
-  onLeave(() => delete actions['cancel-order']);
+  actions['pay-order'] = async () => {
+    try { if (await payOnline(o.number, em)) { o = (await get('/orders/' + num + em)).order; draw(); toast('Payment received ✦'); } } catch (e) { toast(e.message, 'warn'); }
+  };
+  onLeave(() => { delete actions['cancel-order']; delete actions['pay-order']; });
   return 'Order ' + o.number;
 }

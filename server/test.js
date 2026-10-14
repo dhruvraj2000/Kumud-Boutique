@@ -154,6 +154,21 @@ const srv = app.listen(0, async () => {
     assert.equal(r.j.whatsapp, '919876543210'); assert.equal((await call('GET', '/api/meta')).j.twinningPercent, 15);
     await call('PUT', '/api/admin/settings', { whatsapp: '', twinningPercent: 10 }, 'adm');
   });
+  await t('razorpay: payment verification (signature checked)', async () => {
+    const crypto = require('crypto'), { db } = require('./db');
+    assert.equal((await call('POST', '/api/orders', { email: 'rz@example.com', items: [{ id: products[0].id, size: 'M', qty: 1 }], address: addr, payment: { method: 'razorpay' } }, 'rz')).s, 400);
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_x'; process.env.RAZORPAY_KEY_SECRET = 'sekret';
+    assert.equal((await call('GET', '/api/meta')).j.razorpayKeyId, 'rzp_test_x');
+    assert.equal((await call('POST', '/api/orders', { email: 'rz@example.com', items: [{ id: products[0].id, size: 'M', qty: 1 }], address: addr, payment: { method: 'card', cardNumber: '4111111111111111', expiry: '12/39', cvv: '123', cardName: 'A B' } }, 'rz')).s, 400);
+    const o = await call('POST', '/api/orders', { email: 'rz@example.com', items: [{ id: products[0].id, size: 'M', qty: 1 }], address: addr, payment: { method: 'razorpay' } }, 'rz');
+    assert.equal(o.s, 201); assert.equal(o.j.order.onlinePending, true);
+    const n = o.j.order.number; db.prepare("UPDATE orders SET rzp_order_id='order_T1' WHERE number=?").run(n);
+    const q = '?email=rz%40example.com', good = crypto.createHmac('sha256', 'sekret').update('order_T1|pay_T1').digest('hex');
+    assert.equal((await call('POST', `/api/orders/${n}/verify${q}`, { razorpay_order_id: 'order_T1', razorpay_payment_id: 'pay_T1', razorpay_signature: 'bad' }, 'rz')).s, 400);
+    const v = await call('POST', `/api/orders/${n}/verify${q}`, { razorpay_order_id: 'order_T1', razorpay_payment_id: 'pay_T1', razorpay_signature: good }, 'rz');
+    assert.equal(v.s, 200); assert.equal(v.j.order.paymentStatus, 'paid');
+    delete process.env.RAZORPAY_KEY_ID; delete process.env.RAZORPAY_KEY_SECRET;
+  });
   console.log(`\n${passed} checks passed${process.exitCode ? ' - WITH FAILURES' : ''}`);
   srv.close(); setTimeout(() => process.exit(process.exitCode || 0), 100);
 });

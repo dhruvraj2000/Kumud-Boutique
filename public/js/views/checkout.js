@@ -1,4 +1,4 @@
-import { html, render, get, post, $, $$, state, money, quote, applyQuoteToCart, clearCart, onSubmit, toast } from '../core.js';
+import { payOnline, html, render, get, post, $, $$, state, money, quote, applyQuoteToCart, clearCart, onSubmit, toast } from '../core.js';
 import { icon, actions, thumb } from '../components.js';
 import { go } from '../app.js';
 import { getCoupon, setCoupon, summary, couponBox } from './cart.js';
@@ -16,7 +16,7 @@ export default async function checkout({ el, onLeave }) {
     try { addresses = (await get('/addresses')).addresses; if (addresses.length) chosen = String(addresses[0].id); } catch { /* ignore */ }
     try { saved = (await get('/account/measurements')).measurements; if (saved) fit = 'saved'; } catch { /* ignore */ }
   }
-  const u = state.user, def = addresses[0];
+  const u = state.user, def = addresses[0], online = !!(state.meta && state.meta.razorpayKeyId);
 
   const draw = () => render(el, html`
   <section class="wrap page-head"><nav class="crumbs"><a href="#/cart">Bag</a><span>/</span><span>Checkout</span></nav><h1>Checkout</h1>
@@ -47,15 +47,16 @@ export default async function checkout({ el, onLeave }) {
       </section>
 
       <section class="co-card"><h2><i>4</i> Payment</h2>
-        <div class="pay-tabs" role="tablist">${[['cod', 'Cash on delivery'], ['upi', 'UPI'], ['card', 'Card']].map(([k, l]) => html`<button type="button" role="tab" class="${pay === k ? 'on' : ''}" data-action="pay-tab" data-k="${k}" aria-selected="${pay === k}">${l}</button>`)}</div>
+        <div class="pay-tabs" role="tablist">${(online ? [['cod', 'Cash on delivery'], ['razorpay', 'Pay online']] : [['cod', 'Cash on delivery'], ['upi', 'UPI'], ['card', 'Card']]).map(([k, l]) => html`<button type="button" role="tab" class="${pay === k ? 'on' : ''}" data-action="pay-tab" data-k="${k}" aria-selected="${pay === k}">${l}</button>`)}</div>
         <div class="pay-panel" data-p="cod" ${pay !== 'cod' ? 'hidden' : ''}><p>Pay in cash or by UPI to the courier when your order arrives. ${icon('check')} No extra fee.</p></div>
+        <div class="pay-panel" data-p="razorpay" ${pay !== 'razorpay' ? 'hidden' : ''}><p>Pay securely with UPI, cards or net banking. A payment window opens after you place the order. ${icon('lock')}</p></div>
         <div class="pay-panel" data-p="upi" ${pay !== 'upi' ? 'hidden' : ''}><div class="field"><label for="upi">UPI ID</label><input id="upi" name="upiId" placeholder="yourname@bank" autocomplete="off"></div></div>
         <div class="pay-panel" data-p="card" ${pay !== 'card' ? 'hidden' : ''}>
           <div class="field"><label for="cn">Card number</label><input id="cn" name="cardNumber" inputmode="numeric" autocomplete="cc-number" placeholder="1234 5678 9012 3456" maxlength="23"></div>
           <div class="field"><label for="cnm">Name on card</label><input id="cnm" name="cardName" autocomplete="cc-name"></div>
           <div class="two"><div class="field"><label for="cx">Expiry</label><input id="cx" name="expiry" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5"></div><div class="field"><label for="cv">CVV</label><input id="cv" name="cvv" inputmode="numeric" autocomplete="cc-csc" maxlength="4" type="password"></div></div>
         </div>
-        <p class="demo-note">${icon('lock')} Demo store: online payments are simulated and no card is ever charged or stored.</p></section>
+        ${online ? '' : html`<p class="demo-note">${icon('lock')} Demo store: online payments are simulated and no card is ever charged or stored.</p>`}</section>
 
       <section class="co-card"><h2><i>5</i> Notes <small>(optional)</small></h2><div class="field"><label class="sr" for="nt">Order notes</label><textarea id="nt" name="notes" rows="2" maxlength="300" placeholder="Measurements, blouse length, delivery instructions…"></textarea></div></section>
     </div>
@@ -83,7 +84,12 @@ export default async function checkout({ el, onLeave }) {
       try {
         const r = await post('/orders', { email: d.email, items: state.cart.map(({ id, size, qty }) => ({ id, size, qty })), coupon: getCoupon(), address, payment, notes: d.notes,
           fit, measurements: fit === 'custom' ? readMeasureForm(d) : undefined, saveMeasurements: d.saveM === 'on' });
-        clearCart(); setCoupon(''); go(`/orders/${r.order.number}?new=1${state.user ? '' : '&email=' + encodeURIComponent(d.email)}`);
+        clearCart(); setCoupon('');
+        if (pay === 'razorpay') {
+          const qs = state.user ? '' : '?email=' + encodeURIComponent(d.email);
+          try { if (!(await payOnline(r.order.number, qs))) toast('Payment not completed — you can pay from your order page.', 'warn'); } catch (e) { toast(e.message, 'warn'); }
+        }
+        go(`/orders/${r.order.number}?new=1${state.user ? '' : '&email=' + encodeURIComponent(d.email)}`);
       } catch (err) {
         if (err.status === 409) { const t = await quote(getCoupon()); applyQuoteToCart(t); toast(err.message, 'warn'); if (!state.cart.length) return go('/cart'); await reload(); return; }
         if (err.field && err.field.startsWith('m_') && fit !== 'custom') { fit = 'custom'; await reload(); }

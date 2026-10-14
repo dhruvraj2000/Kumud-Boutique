@@ -36,3 +36,9 @@ Originals are in `raw/`. From the project root, `python tools/cutout.py` (rembg)
 
 ## Model photos
 Originals in `raw/lifestyle/`. `python tools/cutout_people.py` and `python tools/cutout_people.py u2net_human_seg` make person cutouts; `python tools/lifestyle.py` combines both masks, removes leftovers (statue, bench, sky), and places each look on a studio backdrop (`public/assets/products/`) plus graded lookbook versions (`public/assets/lookbook/`). Everything runs locally; no photo is uploaded.
+
+## Going live
+- **Database:** Vercel's filesystem is temporary, so orders would be lost there. Deploy with `render.yaml` (Render + persistent disk, sets `KUMUD_DB`) or any host with a disk. The Admin → Launch checklist shows what is still pending.
+- **Payments:** set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` and checkout switches from simulated UPI/card to Razorpay (payment is verified server-side by signature). Without them the demo flow stays on.
+- **Admin password:** set `ADMIN_PASSWORD` before the first run (the default is public).
+- **Designer page:** replace the general copy in `public/js/views/info.js` (`designer`) with the real bio and portrait.

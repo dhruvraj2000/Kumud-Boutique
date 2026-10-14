@@ -507,6 +507,19 @@ app.put('/api/admin/settings', needAdmin, (req, res, next) => {
   setSetting('whatsapp', wa.length === 10 ? '91' + wa : wa); setSetting('twinningPercent', Math.round(pct));
   res.json({ whatsapp: getSetting('whatsapp'), twinningPercent: twinPct() });
 });
+app.get('/api/admin/launch', needAdmin, (req, res) => {
+  const onVercel = !!process.env.VERCEL && !process.env.KUMUD_DB;
+  const items = [
+    ['WhatsApp number set', !!getSetting('whatsapp'), 'Admin → Settings. The chat button stays hidden until set.'],
+    ['Persistent database', !onVercel, 'On Vercel the SQLite file lives in /tmp and resets. Move to Turso/Neon or host on a server with a disk.'],
+    ['Real payment gateway', false, 'UPI and card payments are simulated. Connect Razorpay before taking real orders.'],
+    ['Admin password changed', process.env.ADMIN_PASSWORD ? true : false, 'Set the ADMIN_PASSWORD environment variable; the default is public in the README.'],
+    ['Real product details & stock', false, 'Names, prices and descriptions are placeholders until you edit them in Admin → Products.'],
+    ['Designer bio & portrait', false, 'The Designer page uses general copy. Send the designer’s real bio and photo to publish it.'],
+    ['Custom domain', false, 'Connect your own domain in Vercel project settings.']
+  ].map(([label, done, hint]) => ({ label, done, hint }));
+  res.json({ items });
+});
 app.get('/api/admin/inquiries', needAdmin, (req, res) => res.json({ inquiries: db.prepare('SELECT * FROM inquiries ORDER BY id DESC LIMIT 100').all() }));
 
 /* ---------- static + errors ---------- */

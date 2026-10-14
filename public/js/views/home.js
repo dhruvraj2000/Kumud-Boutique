@@ -62,6 +62,13 @@ export default async function home({ el, onLeave }) {
     </a>
   </section>
 
+  <section class="wrap section">
+    <div class="cta-band" data-reveal>
+      <div><p class="eyebrow light">Meet the atelier</p><h2>Your design, our hands.</h2><p>Consult, co-design and get fitted by the studio that prints, cuts and finishes every piece.</p></div>
+      <div class="hero-cta"><a class="btn btn-gold" href="#/designer">The designer ${icon('arrow')}</a><a class="btn btn-ghost" href="#/custom">Custom design</a></div>
+    </div>
+  </section>
+
   <section class="story">
     <div class="wrap story-grid">
       <div class="story-media" data-reveal>

@@ -6,7 +6,7 @@ const app = $('#app'), main = $('#main');
 const ROUTES = [
   [/^\/?$/, 'home'], [/^\/shop$/, 'shop'], [/^\/product\/([\w-]+)$/, 'product'], [/^\/cart$/, 'cart'], [/^\/checkout$/, 'checkout'],
   [/^\/wishlist$/, 'wishlist'], [/^\/(login|register)$/, 'auth'], [/^\/account(?:\/(\w+))?$/, 'account'], [/^\/orders\/([\w-]+)$/, 'order'],
-  [/^\/track$/, 'track'], [/^\/lookbook$/, 'lookbook'], [/^\/twinning$/, 'twinning'], [/^\/(about|contact|shipping|size-guide)$/, 'info'], [/^\/admin(?:\/(\w+))?$/, 'admin']
+  [/^\/track$/, 'track'], [/^\/lookbook$/, 'lookbook'], [/^\/twinning$/, 'twinning'], [/^\/(about|contact|shipping|size-guide|designer|care|faq|custom|book)$/, 'info'], [/^\/admin(?:\/(\w+))?$/, 'admin']
 ];
 let leaveFns = [], lastPath = null, navToken = 0;
 const progress = $('#progress');
@@ -51,7 +51,7 @@ function setActiveNav(path, query) {
   const col = query.get('collection');
   $$('.nav a[data-nav], .nav-link').forEach(a => {
     const k = a.dataset.nav;
-    const on = (k === 'shop' && path === '/shop') || (k === 'lookbook' && path === '/lookbook') || (k === 'twinning' && path === '/twinning') || (k === 'about' && path === '/about') || (k === 'contact' && path === '/contact');
+    const on = (k === 'shop' && path === '/shop') || (k === 'lookbook' && path === '/lookbook') || (k === 'twinning' && path === '/twinning') || (k === 'about' && path === '/about') || (k === 'designer' && path === '/designer') || (k === 'contact' && path === '/contact');
     a.classList.toggle('active', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
 }

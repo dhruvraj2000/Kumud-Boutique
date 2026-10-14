@@ -8,7 +8,7 @@ const FLOW = ['placed', 'confirmed', 'preparing', 'shipped', 'out_for_delivery',
 export default async function admin({ el, params, onLeave }) {
   if (!state.user || state.user.role !== 'admin') { render(el, html`<section class="wrap page-narrow empty"><h1>Admins only</h1><p>Sign in with an admin account to manage the store.</p><a class="btn btn-primary" href="#/login?next=/admin">Sign in</a></section>`); return 'Admin'; }
   const tab = params[0] || 'overview';
-  const tabs = [['overview', 'Overview'], ['orders', 'Orders'], ['products', 'Products'], ['inquiries', 'Enquiries'], ['settings', 'Settings']];
+  const tabs = [['overview', 'Overview'], ['orders', 'Orders'], ['products', 'Products'], ['inquiries', 'Enquiries'], ['launch', 'Launch checklist'], ['settings', 'Settings']];
   const shell = body => html`<section class="wrap page-head"><p class="eyebrow">Admin</p><h1>Store manager</h1></section><div class="wrap admin"><nav class="acct-nav row">${tabs.map(([k, l]) => html`<a href="#/admin/${k}" class="${tab === k ? 'on' : ''}">${l}</a>`)}</nav>${body}</div>`;
 
   if (tab === 'orders') {
@@ -34,6 +34,10 @@ export default async function admin({ el, params, onLeave }) {
   } else if (tab === 'inquiries') {
     const { inquiries } = await get('/admin/inquiries');
     render(el, shell(inquiries.length ? html`<div class="inq-list">${inquiries.map(q => html`<article class="panel"><header class="p-head"><b>${q.name}</b><small>${fmtDate(q.created_at, true)}</small></header><p><a href="mailto:${q.email}">${q.email}</a> ${q.phone ? '· ' + q.phone : ''}</p><p><b>${q.topic}</b>${q.preferred_date ? ' · prefers ' + q.preferred_date : ''}</p><p>${q.message}</p></article>`)}</div>` : html`<p class="muted">No enquiries yet.</p>`));
+  } else if (tab === 'launch') {
+    const { items } = await get('/admin/launch'), left = items.filter(i => !i.done).length;
+    render(el, shell(html`<div class="panel"><h2>Launch checklist</h2><p class="muted">${left ? left + ' of ' + items.length + ' items still pending.' : 'Everything is ready to go live.'}</p>
+      <ul class="chk-list">${items.map(i => html`<li><span class="st ${i.done ? 'ok' : 'todo'}">${i.done ? 'Done' : 'Pending'}</span><div><b>${i.label}</b><small>${i.hint}</small></div></li>`)}</ul></div>`));
   } else if (tab === 'settings') {
     const st = await get('/admin/settings');
     render(el, shell(html`<div class="panel settings"><h2>Store settings</h2>

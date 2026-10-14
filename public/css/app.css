@@ -523,3 +523,9 @@ body.locked .wa-fab{opacity:0;pointer-events:none}
 
 .wrap.section-tight{padding-left:var(--gut);padding-right:var(--gut)}
 .foot-mail a,.contact-info a,.mobile-foot a[href^=mailto]{word-break:break-all}.foot-mail a:hover{color:#fff;text-decoration:underline}
+
+/* designer / faq / launch checklist */
+.steps.proc{grid-template-columns:repeat(3,1fr);gap:22px}
+.faq-i{border-bottom:1px solid var(--line,#e6d9c8);padding:14px 0}.faq-i summary{cursor:pointer;font:500 1.1rem var(--serif);color:var(--plum)}.faq-i p{margin:10px 0 0;color:var(--muted)}
+.chk-list{list-style:none;padding:0;margin:0}.chk-list li{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line,#e6d9c8)}.chk-list .st{flex:none;width:74px;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;font-weight:600}.chk-list .ok{color:#2f7d4f}.chk-list .todo{color:#b4532a}.chk-list small{display:block;color:var(--muted)}
+@media(max-width:720px){.steps.proc{grid-template-columns:1fr 1fr}}

@@ -22,8 +22,8 @@ export default async function twinning({ el, onLeave }) {
         <div class="hero-cta"><a class="btn btn-primary" href="#pairs" data-action="tw-jump">Shop the pairs ${icon('arrow')}</a><a class="btn btn-ghost" href="#/lookbook">See the lookbook</a></div>
         ${pct ? html`<span class="tw-seal" aria-hidden="true"><b>${pct}%</b><small>off the pair</small></span>` : ''}
       </div>
-      <div class="tw-art"><div class="arch"><img src="/assets/lookbook/look-twinning.webp" alt="Mother and daughter in matching Safed Patchwork lehengas" width="1600" height="2000" fetchpriority="high"></div>
-        <img class="tw-float" src="/assets/lookbook/look-patchwork-closeup.webp" alt="" width="1080" height="1700" loading="lazy"></div>
+      <div class="tw-art"><div class="arch"><img src="/assets/products/white-patchwork-lehenga.webp" alt="Safed Patchwork lehenga set" width="1200" height="1500" fetchpriority="high"></div>
+        <img class="tw-float" src="/assets/products/twinning-patchwork-1.webp" alt="Safed Patchwork mini set for girls" width="1200" height="1500" loading="lazy"></div>
     </div>
   </section>
 

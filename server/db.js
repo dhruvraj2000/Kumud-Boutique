@@ -128,15 +128,6 @@ const PRODUCTS = [
     colors: ['Mint & Rani Pink'], images: IMG('hara-satin-1.webp', 'hara-satin-2.webp'), stock: SIZES(2, 4, 6, 4, 2)
   },
   {
-    slug: 'rangrez-kutch-striped-lehenga', name: 'Rangrez Kutch Striped Lehenga', category: 'Lehenga Sets', collection: 'Festive Brights',
-    price: 6990, compare_at: null, badge: 'Garba Pick', featured: 0, sort: 7,
-    tagline: 'Rainbow panels and a hand-embroidered Kutch mirror choli.',
-    description: 'Made for garba nights: a swirling lehenga of saffron, lime, crimson and black panels finished with gota stripes at the hem. The sleeveless choli is covered in Kutch-style thread embroidery and tiny mirrors that catch the light as you dance.',
-    details: ['Multi-panel striped skirt with gota hem', 'Kutch thread embroidery and mirror work', 'Sleeveless choli with tie-back', 'Lightweight for dancing', 'Made-to-measure alterations available'],
-    includes: ['Lehenga skirt', 'Choli'], care: 'Dry clean recommended. Store flat to protect the mirrors.',
-    colors: ['Multicolour'], images: IMG('kutch-rang-1.webp'), stock: SIZES(2, 4, 5, 4, 2)
-  },
-  {
     slug: 'safed-patchwork-mini-set', name: 'Safed Patchwork Mini Set', category: 'Kids', collection: 'Twinning',
     price: 3490, compare_at: null, badge: 'Twinning', featured: 0, sort: 8, twin: 'safed-patchwork-lehenga-set',
     tagline: 'The little one\u2019s match to our Safed Patchwork set.',
@@ -162,21 +153,15 @@ function insertProduct(p) {
 
 // Lookbook stories: hotspot x/y are percentages of the image; slug links to a product.
 const LOOKS = [
-  { id: 'twirl', title: 'The Twirl', kicker: 'Festive Brights', image: '/assets/lookbook/look-hara-twirl.webp', w: 1600, h: 2000,
+  { id: 'twirl', title: 'The Twirl', kicker: 'Festive Brights', image: '/assets/lookbook/look-gunnu-twirl.webp', w: 1024, h: 1536,
     text: 'Mint satin cut on a full circle \u2014 one spin and the whole skirt opens like a flower.',
-    spots: [{ x: 52, y: 26, slug: 'hara-bandhani-satin-lehenga', label: 'Pin-tuck halter choli' }, { x: 44, y: 62, slug: 'hara-bandhani-satin-lehenga', label: 'Full-circle satin skirt' }] },
-  { id: 'twinning', title: 'Twinning, Always', kicker: 'Mother & Daughter', image: '/assets/lookbook/look-twinning.webp', w: 1600, h: 2000,
-    text: 'The Safed Patchwork set, in her size and yours. Buy both and save on the pair.',
-    spots: [{ x: 40, y: 30, slug: 'safed-patchwork-lehenga-set', label: 'Safed Patchwork Lehenga Set' }, { x: 74, y: 52, slug: 'safed-patchwork-mini-set', label: 'Safed Patchwork Mini Set' }] },
-  { id: 'garden', title: 'Golden Hour', kicker: 'Festive Brights', image: '/assets/lookbook/look-hara-garden.webp', w: 738, h: 1340,
-    text: 'Bandhani pink and silver lace, made for afternoon haldis and evening garba.',
-    spots: [{ x: 62, y: 42, slug: 'hara-bandhani-satin-lehenga', label: 'Bandhani dupatta' }] },
-  { id: 'closeup', title: 'In the Details', kicker: 'Ajrakh Edit', image: '/assets/lookbook/look-patchwork-closeup.webp', w: 1080, h: 1700,
-    text: 'Zig-zag Ajrakh, a sweetheart halter and silver jhumkas \u2014 the choli that started it all.',
-    spots: [{ x: 58, y: 70, slug: 'safed-patchwork-lehenga-set', label: 'Ajrakh halter choli' }] },
-  { id: 'duo', title: 'Garba Night', kicker: 'Festive Brights', image: '/assets/lookbook/look-duo.webp', w: 738, h: 1220,
-    text: 'Rainbow panels and Kutch mirrors beside mint satin \u2014 two ways to own the dance floor.',
-    spots: [{ x: 26, y: 26, slug: 'rangrez-kutch-striped-lehenga', label: 'Kutch mirror choli' }, { x: 22, y: 66, slug: 'rangrez-kutch-striped-lehenga', label: 'Striped panel skirt' }, { x: 64, y: 58, slug: 'hara-bandhani-satin-lehenga', label: 'Hara satin lehenga' }] }
+    spots: [{ x: 50, y: 36, slug: 'hara-bandhani-satin-lehenga', label: 'Pin-tuck halter choli' }, { x: 45, y: 74, slug: 'hara-bandhani-satin-lehenga', label: 'Full-circle satin skirt' }] },
+  { id: 'patchwork', title: 'In the Details', kicker: 'Ajrakh Edit', image: '/assets/lookbook/ajrakh-patchwork.webp', w: 1080, h: 1439,
+    text: 'Ajrakh-print halter choli and tasselled dupatta over soft white cotton, patched with hand block-printed squares.',
+    spots: [{ x: 52, y: 32, slug: 'safed-patchwork-lehenga-set', label: 'Ajrakh halter choli' }, { x: 54, y: 69, slug: 'safed-patchwork-lehenga-set', label: 'Patchwork skirt' }] },
+  { id: 'garba', title: 'Garba Night', kicker: 'Garba Nights', image: '/assets/lookbook/garba-night.webp', w: 1080, h: 1440,
+    text: 'Block-printed black skirts, Ajrakh dupattas and gold-striped hems — made for garba nights and the friends who share them.',
+    spots: [] }
 ];
 
 const SETTING_DEFAULTS = { whatsapp: process.env.WHATSAPP_NUMBER || '', twinningPercent: '10' };

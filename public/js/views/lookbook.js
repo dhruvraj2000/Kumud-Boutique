@@ -33,8 +33,8 @@ export default async function lookbook({ el, onLeave }) {
         <p class="eyebrow">${l.kicker}</p>
         <h2>${l.title}</h2>
         <p class="look-text">${l.text}</p>
-        <h3 class="look-shop">Shop the look</h3>
-        <ul class="look-items">${uniq(l).map(p => html`<li><a href="#/product/${p.slug}"><img src="${thumb(p.image)}" alt="" width="72" height="90" loading="lazy"><span><b>${p.name}</b><small>${p.collection}</small></span><em>${money(p.price)}</em>${icon('arrow')}</a></li>`)}</ul>
+        ${uniq(l).length ? html`<h3 class="look-shop">Shop the look</h3>
+        <ul class="look-items">${uniq(l).map(p => html`<li><a href="#/product/${p.slug}"><img src="${thumb(p.image)}" alt="" width="72" height="90" loading="lazy"><span><b>${p.name}</b><small>${p.collection}</small></span><em>${money(p.price)}</em>${icon('arrow')}</a></li>`)}</ul>` : html`<a class="btn btn-primary" href="#/shop">Shop the collection ${icon('arrow')}</a>`}
       </div>
     </div>
   </section>`)}

@@ -122,7 +122,7 @@ const srv = app.listen(0, async () => {
     assert.equal((await call('POST', '/api/newsletter', { email: 'ria@example.com' })).s, 201);
   });
   await t('lookbook resolves hotspots to products', async () => {
-    const r = await call('GET', '/api/lookbook'); assert.equal(r.s, 200); assert(r.j.looks.length >= 3);
+    const r = await call('GET', '/api/lookbook'); assert.equal(r.s, 200); assert(r.j.looks.length >= 1);
     assert(r.j.looks.every(l => l.spots.every(s => s.product && s.product.slug === s.slug)));
   });
   await t('twinning pair discount in quote and order', async () => {

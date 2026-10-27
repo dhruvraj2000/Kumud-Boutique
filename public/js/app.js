@@ -188,6 +188,9 @@ const syncFoot = () => $$('.foot-col').forEach(d => { d.open = !footMq.matches; 
 syncFoot(); footMq.addEventListener('change', syncFoot);
 $$('.foot-col summary').forEach(sm => sm.addEventListener('click', e => { if (!footMq.matches) e.preventDefault(); }));
 
+/* ---------- custom cursor + magnetic buttons (fine pointers only) ---------- */
+import('./fx3d.js').then(fx => { fx.initCursor(); fx.initMotion(); }).catch(() => {});
+
 /* ---------- boot ---------- */
 window.addEventListener('hashchange', route);
 (async () => {
@@ -195,4 +198,9 @@ window.addEventListener('hashchange', route);
   await loadUser(); updateBadges();
   if (state.cart.length && state.meta) { try { applyQuoteToCart(await quote()); } catch { /* ignore */ } }
   await route(); syncWa();
+  const curtain = $('#curtain');
+  if (curtain) {
+    try { sessionStorage.setItem('kb-intro', '1'); } catch { /* private mode */ }
+    setTimeout(() => { curtain.classList.add('go'); setTimeout(() => curtain.remove(), 1000); }, 900);
+  }
 })();

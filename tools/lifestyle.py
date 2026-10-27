@@ -126,14 +126,7 @@ def graded_original(src, out, crop=None, maxw=1400):
 
 if __name__ == "__main__":
     P = (1200, 1500)
-    save(place("green-pose", "green-pose", "", P, "blush"), os.path.join(PROD, "hara-satin-1.webp"), (600, 750))
     save(place("green-twirl", "green-twirl", "", P, "blush", height=0.88), os.path.join(PROD, "hara-satin-2.webp"), (600, 750))
     save(place("kutch", "duo-mirror", "", P, "sand", height=0.97, bleed=True, x_frac=0.5), os.path.join(PROD, "kutch-rang-1.webp"), (600, 750))
     save(place("twinning", "twinning", "", P, "ivory", height=0.86), os.path.join(PROD, "twinning-patchwork-1.webp"), (600, 750))
     # lookbook: studio editorials + softened originals
-    save(place("green-twirl", "green-twirl", "", (1600, 2000), "blush", height=0.88), os.path.join(LOOK, "look-hara-twirl.webp"))
-    save(place("twinning", "twinning", "", (1600, 2000), "ivory", height=0.86), os.path.join(LOOK, "look-twinning.webp"))
-    graded_original("green-pose", "look-hara-garden", crop=(0, 260, 738, 1600))
-    graded_original("twinning", "look-twinning-street", crop=(0, 380, 1080, 1920))
-    graded_original("patchwork-closeup", "look-patchwork-closeup", crop=(0, 0, 1080, 1700))
-    graded_original("duo-mirror", "look-duo", crop=(0, 380, 738, 1600))

@@ -25,7 +25,7 @@ Originals are in `raw/`. From the project root, `python tools/cutout.py` (rembg)
 - Product names, descriptions, prices and stock are placeholders — edit in `server/db.js` (before first run) or via the admin panel.
 - Online payments (UPI/card) are simulated; no card data is stored. Replace with a real gateway (e.g. Razorpay) before going live.
 - `legacy/` holds the previous one-page site.
-- Contact details (shown on the contact page, footer and mobile menu): kumudgunjankumawat@gmail.com · +91 77425 84375 · 1715 Neemuch Mata Scheme, Dewali, Udaipur. WhatsApp uses the same number (Admin → Settings).
+- Contact details (shown on the contact page, footer and mobile menu): kumudgunjankumawat@gmail.com · +91 77425 84375 · Dewali, Udaipur. WhatsApp uses the same number (Admin → Settings).
 
 ## Features added in v2
 - **Lookbook** (`#/lookbook`): editorial model shots with tappable hotspots that open a mini product card (bottom sheet on phones). Stories and hotspot positions live in `LOOKS` in `server/db.js`.

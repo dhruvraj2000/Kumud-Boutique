@@ -107,7 +107,7 @@ const PRODUCTS = [
     description: 'A fluid white lehenga scattered with diamond appliqué patches of Ajrakh print and mirror work, worn with a halter-neck Ajrakh choli and a red printed dupatta finished with a lace edge and tassels. Made for Navratri nights and day-time festivities alike.',
     details: ['Flowing white skirt with Ajrakh appliqué patches', 'Halter-neck printed choli', 'Printed dupatta with lace edge and tassels', 'Mirror-work accents', 'Made-to-measure alterations available'],
     includes: ['Lehenga skirt', 'Choli', 'Dupatta'], care: 'Gentle hand wash or dry clean. Wash the dupatta separately.',
-    colors: ['Ivory White'], twin: 'safed-patchwork-mini-set', images: IMG('white-patchwork-lehenga.webp', 'twinning-patchwork-1.webp', 'white-patchwork-detail.webp'), stock: SIZES(2, 5, 7, 5, 2)
+    colors: ['Ivory White'], twin: 'safed-patchwork-mini-set', images: IMG('white-patchwork-lehenga.webp', 'white-patchwork-detail.webp'), stock: SIZES(2, 5, 7, 5, 2)
   },
   {
     slug: 'midnight-ajrakh-halter-set', name: 'Midnight Ajrakh Halter Set', category: 'Skirt & Choli Sets', collection: 'Noir Edit',
@@ -134,7 +134,7 @@ const PRODUCTS = [
     description: 'A mini version of our Safed Patchwork lehenga for girls: a soft white cotton skirt with Ajrakh patches, a printed Ajrakh choli and a light tasselled dupatta. Pair it with the Safed Patchwork Lehenga Set and save on both.',
     details: ['Soft cotton skirt with elastic-back waist', 'Ajrakh-print sleeveless choli', 'Light dupatta with tassels', 'Comfortable lining for little ones', 'Free length adjustment'],
     includes: ['Lehenga skirt', 'Choli', 'Dupatta'], care: 'Gentle hand wash in cold water. Wash the dupatta separately.',
-    colors: ['Ivory White'], images: IMG('twinning-patchwork-1.webp'), stock: KIDS(3, 4, 4, 4, 3, 2)
+    colors: ['Ivory White'], images: IMG('white-patchwork-lehenga.webp'), stock: KIDS(3, 4, 4, 4, 3, 2)
   }
 ];
 
@@ -188,12 +188,17 @@ function seed() {
   }
 }
 seed();
+const RETIRED_IMAGES = ['twinning-patchwork-1.webp'];
 // catalogue upgrades for existing databases: add new pieces, link twins, append new photos (stock and prices are left alone)
 for (const p of PRODUCTS) {
   const row = db.prepare('SELECT id,images,twin_slug FROM products WHERE slug=?').get(p.slug);
   if (!row) { insertProduct(p); continue; }
   if (p.twin && !row.twin_slug) db.prepare('UPDATE products SET twin_slug=? WHERE id=?').run(p.twin, row.id);
-  const have = JSON.parse(row.images), add = p.images.filter(i => !have.includes(i));
+  let have = JSON.parse(row.images);
+  // retired photos: drop them from existing databases, falling back to the catalogue photos if nothing is left
+  const kept = have.filter(i => !RETIRED_IMAGES.some(r => i.endsWith(r)));
+  if (kept.length !== have.length) { have = kept.length ? kept : p.images; db.prepare('UPDATE products SET images=? WHERE id=?').run(JSON.stringify(have), row.id); }
+  const add = p.images.filter(i => !have.includes(i));
   if (add.length && have.every(i => p.images.includes(i))) db.prepare('UPDATE products SET images=? WHERE id=?').run(JSON.stringify(p.images), row.id);
 }
 

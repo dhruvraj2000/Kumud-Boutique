@@ -128,5 +128,4 @@ if __name__ == "__main__":
     P = (1200, 1500)
     save(place("green-twirl", "green-twirl", "", P, "blush", height=0.88), os.path.join(PROD, "hara-satin-2.webp"), (600, 750))
     save(place("kutch", "duo-mirror", "", P, "sand", height=0.97, bleed=True, x_frac=0.5), os.path.join(PROD, "kutch-rang-1.webp"), (600, 750))
-    save(place("twinning", "twinning", "", P, "ivory", height=0.86), os.path.join(PROD, "twinning-patchwork-1.webp"), (600, 750))
     # lookbook: studio editorials + softened originals

@@ -68,6 +68,28 @@ export default async function home({ el, onLeave }) {
     </div>
   </section>
 
+  <section class="sstory" aria-label="Kumud story">
+    <div class="ss-stage">
+      <div class="ss-bg ss-bg2" data-ss="bg2"></div>
+      <div class="ss-bg ss-bg3" data-ss="bg3"></div>
+      <div class="ss-spark" data-ss="spark" aria-hidden="true"></div>
+      <h2 class="ss-title" data-ss="title">KUMUD</h2>
+      <div class="ss-marq" data-ss="marq" aria-hidden="true"><span>AJRAKH ✦ INDIGO DABU ✦ MIRROR WORK ✦ BANDHANI ✦ AJRAKH ✦ INDIGO DABU ✦ MIRROR WORK ✦ BANDHANI ✦</span></div>
+      <div class="ss-seal" data-ss="seal" aria-hidden="true"><svg viewBox="0 0 400 400"><defs><path id="ssc" d="M200 200m-178 0a178 178 0 1 1 356 0a178 178 0 1 1-356 0"/></defs><text><textPath href="#ssc">HANDBLOCK PRINTED ✦ MADE TO MEASURE ✦ UDAIPUR ✦ HANDBLOCK PRINTED ✦ MADE TO MEASURE ✦ UDAIPUR ✦</textPath></text></svg></div>
+      <ol class="ss-dots" data-ss="dots" aria-hidden="true"><li></li><li></li><li></li></ol>
+      <div class="ss-art ss-a" data-ss="artA"><img src="${hero.images[0]}" alt="${hero.name}" width="1200" height="1500" decoding="async"></div>
+      <div class="ss-art ss-b" data-ss="artB"><div class="ss-arch"><img src="${hero.images[0]}" alt="" width="1200" height="1500" decoding="async"></div></div>
+      <div class="ss-art ss-c" data-ss="artC"><div class="ss-arch"><img src="/assets/lookbook/red-edit-twirl.webp" alt="Model twirling in a red and white lehenga" width="1080" height="1440" decoding="async"></div></div>
+      <div class="ss-glow" data-ss="glow" aria-hidden="true"></div>
+      <p class="ss-t ss-t1" data-ss="t1">Handblock-printed in Udaipur, cut to your measurements. Indigo, Ajrakh and noir, made for the nights you want to be remembered.</p>
+      <p class="ss-hint" data-ss="hint" aria-hidden="true">Scroll ↓</p>
+      <h3 class="ss-t ss-t2h" data-ss="t2h" data-split>Isn’t just a <em>lehenga.</em></h3>
+      <p class="ss-t ss-t2p" data-ss="t2p">Every border is stamped by hand, one block at a time. Look closer — the dabu resist, the cowrie trims, the tassels tied one by one.</p>
+      <h3 class="ss-t ss-t3h" data-ss="t3h" data-split>Made to <em>twirl.</em></h3>
+      <div class="ss-t ss-t3p" data-ss="t3p"><p>Bandhani panels, mirror work and a skirt cut wide for dancing. Finished to your fit, free of charge.</p><a class="btn btn-gold" href="#/shop">Shop the collection ${icon('arrow')}</a></div>
+    </div>
+  </section>
+
   <div class="marquee" aria-hidden="true"><div class="track">${Array.from({ length: 2 }, () => html`<span>Ajrakh</span><i>✦</i><span>Indigo dabu</span><i>✦</i><span>Mirror work</span><i>✦</i><span>Tassel dupattas</span><i>✦</i><span>Made to measure</span><i>✦</i><span>Cowrie trims</span><i>✦</i>`)}</div></div>
 
   <section class="section wrap">
@@ -188,6 +210,8 @@ export default async function home({ el, onLeave }) {
       <a class="btn btn-gold" href="#/contact">Book a consultation ${icon('arrow')}</a>
     </div>
   </section>`);
+
+  import('../scrollstory.js').then(m => m.mountScrollStory(el.querySelector('.sstory'), onLeave)).catch(err => console.warn('scroll story unavailable', err));
 
   // Three.js scenes load lazily; failures leave the plain CSS design in place
   import('../fx3d.js').then(fx => {

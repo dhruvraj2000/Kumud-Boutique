@@ -1,5 +1,6 @@
 // App shell: router, page transitions, header/drawer/search behaviour, global click actions.
 import { $, $$, html, render, money, state, subscribe, cartCount, loadUser, get, post, quote, applyQuoteToCart, setQty, removeLine, addToCart, toggleWish, toast, esc, onSubmit } from './core.js';
+import { createLoader } from './loader.js';
 import { actions, icon, productIndex, thumb, waLink, pageUrl } from './components.js';
 
 const app = $('#app'), main = $('#main');
@@ -189,18 +190,21 @@ syncFoot(); footMq.addEventListener('change', syncFoot);
 $$('.foot-col summary').forEach(sm => sm.addEventListener('click', e => { if (!footMq.matches) e.preventDefault(); }));
 
 /* ---------- custom cursor + magnetic buttons (fine pointers only) ---------- */
-import('./fx3d.js').then(fx => { fx.initCursor(); fx.initMotion(); }).catch(() => {});
+const fxReady = import('./fx3d.js').then(fx => { fx.initCursor(); fx.initMotion(); }).catch(() => {});
 
 /* ---------- boot ---------- */
 window.addEventListener('hashchange', route);
 (async () => {
-  try { state.meta = await get('/meta'); } catch { /* handled by views */ }
-  await loadUser(); updateBadges();
-  if (state.cart.length && state.meta) { try { applyQuoteToCart(await quote()); } catch { /* ignore */ } }
-  await route(); syncWa();
-  const curtain = $('#curtain');
-  if (curtain) {
-    try { sessionStorage.setItem('kb-intro', '1'); } catch { /* private mode */ }
-    setTimeout(() => { curtain.classList.add('go'); setTimeout(() => curtain.remove(), 1000); }, 900);
-  }
+  const loader = createLoader();
+  loader.track(document.fonts && document.fonts.ready);
+  loader.track(document.readyState === 'complete' ? Promise.resolve() : new Promise(r => window.addEventListener('load', r, { once: true })), 12000);
+  loader.track(fxReady);
+  try {
+    try { state.meta = await get('/meta'); } catch { /* handled by views */ }
+    await loadUser(); updateBadges();
+    if (state.cart.length && state.meta) { try { applyQuoteToCart(await quote()); } catch { /* ignore */ } }
+    await route(); syncWa();
+    loader.trackImages();                       // hero, logos, story images: everything not lazy
+    loader.trackSelector('.sstory', 'is-live'); // scroll story finished mounting
+  } finally { await loader.finish(); }
 })();

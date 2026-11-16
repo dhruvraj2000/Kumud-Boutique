@@ -4,7 +4,18 @@
   "private": true,
   "description": "Kumud Boutique Fashion Design — e-commerce storefront",
   "main": "server/server.js",
-  "scripts": { "start": "node server/server.js", "test": "node server/test.js" },
-  "engines": { "node": ">=22.13" },
-  "dependencies": { "express": "^4.21.2" }
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node server/test.js",
+    "migrate": "node --env-file-if-exists=.env -e \"require('./server/migrate').run().then(r=>{console.log(r);process.exit(0)})\"",
+    "test:booking": "node --env-file-if-exists=.env --test test/*.test.js",
+    "admin:create": "node --env-file-if-exists=.env scripts/create-admin.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mysql2": "^3.24.6"
+  }
 }

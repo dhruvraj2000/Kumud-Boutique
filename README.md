@@ -42,3 +42,6 @@ Originals in `raw/lifestyle/`. `python tools/cutout_people.py` and `python tools
 - **Payments:** set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` and checkout switches from simulated UPI/card to Razorpay (payment is verified server-side by signature). Without them the demo flow stays on.
 - **Admin password:** set `ADMIN_PASSWORD` before the first run (the default is public).
 - **Designer page:** replace the general copy in `public/js/views/info.js` (`designer`) with the real bio and portrait.
+
+## Bookings & Admin Portal (MySQL)
+Rentals and atelier appointments are stored in MySQL; prices come from a date-based rate calendar managed in the portal at `/admin`. Setup, rate rules and tests: see [docs/booking-setup.md](docs/booking-setup.md). The shop itself still runs on SQLite (migration is a separate step).

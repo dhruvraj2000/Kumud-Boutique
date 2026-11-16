@@ -562,6 +562,16 @@ app.get('/api/admin/launch', needAdmin, (req, res) => {
 });
 app.get('/api/admin/inquiries', needAdmin, (req, res) => res.json({ inquiries: db.prepare('SELECT * FROM inquiries ORDER BY id DESC LIMIT 100').all() }));
 
+/* ---------- bookings (MySQL) + admin portal ---------- */
+app.use('/api', require('./booking-routes'));
+const { authRouter, requireAdmin } = require('./admin-auth');
+app.use('/api/portal/auth', authRouter);
+app.use('/api/portal', requireAdmin, require('./admin-routes'));
+app.get('/admin', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+  res.sendFile(path.join(__dirname, '..', 'public', 'admin', 'index.html'));
+});
+
 /* ---------- static + errors ---------- */
 const PUB = path.join(__dirname, '..', 'public');
 app.use('/assets', express.static(path.join(PUB, 'assets'), { maxAge: '7d', immutable: true }));
@@ -572,7 +582,7 @@ app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') err = bad('Invalid request.');
   const status = err.status || 500;
   if (status >= 500) console.error(err);
-  res.status(status).json({ error: status >= 500 ? 'Something went wrong. Please try again.' : err.message, field: err.field });
+  res.status(status).json({ error: status >= 500 && status !== 503 ? 'Something went wrong. Please try again.' : err.message, field: err.field });
 });
 
 if (require.main === module) app.listen(PORT, () => console.log(`Kumud Boutique running → http://localhost:${PORT}`));

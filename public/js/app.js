@@ -7,7 +7,7 @@ const app = $('#app'), main = $('#main');
 const ROUTES = [
   [/^\/?$/, 'home'], [/^\/shop$/, 'shop'], [/^\/product\/([\w-]+)$/, 'product'], [/^\/cart$/, 'cart'], [/^\/checkout$/, 'checkout'],
   [/^\/wishlist$/, 'wishlist'], [/^\/(login|register)$/, 'auth'], [/^\/account(?:\/(\w+))?$/, 'account'], [/^\/orders\/([\w-]+)$/, 'order'],
-  [/^\/track$/, 'track'], [/^\/lookbook$/, 'lookbook'], [/^\/twinning$/, 'twinning'], [/^\/(about|contact|shipping|size-guide|designer|care|faq|custom|book)$/, 'info'], [/^\/admin(?:\/(\w+))?$/, 'admin']
+  [/^\/track$/, 'track'], [/^\/lookbook$/, 'lookbook'], [/^\/twinning$/, 'twinning'], [/^\/(rent|book)$/, 'booking'], [/^\/(about|contact|shipping|size-guide|designer|care|faq|custom)$/, 'info'], [/^\/admin(?:\/(\w+))?$/, 'admin']
 ];
 let leaveFns = [], lastPath = null, navToken = 0;
 const progress = $('#progress');

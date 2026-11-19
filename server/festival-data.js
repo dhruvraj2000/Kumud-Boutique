@@ -85,6 +85,26 @@ async function generateCampaigns(now = Date.now()) {
   return created;
 }
 
+/* ---------- built-in calendar (no database) ---------- */
+// Without MySQL (e.g. a fresh Vercel deploy) the shop still runs the automatic festival calendar from the defaults above, so sales
+// appear on time. Editing campaigns, rules and coupons needs MySQL. Only used on Vercel, or when FESTIVAL_BUILTIN=1, so that local
+// runs and the test-suite stay deterministic.
+const builtinEnabled = () => !mysql.isConfigured() && (!!process.env.VERCEL || process.env.FESTIVAL_BUILTIN === '1');
+function builtinCampaigns(at = Date.now()) {
+  const y0 = Number(istToday(at).slice(0, 4)), out = [];
+  TEMPLATES.forEach((t, i) => {
+    for (let y = y0; y <= y0 + HORIZON_YEARS; y++) {
+      const date = festivalDate(t, y, MOVABLE_DATES[t.slug] || {});
+      if (!date) continue;
+      const w = windowFor(t, date);
+      if (P.toMs(w.ends_at) < at) continue;
+      out.push({ id: -(i * 100 + y % 100), slug: `${t.slug}-${y}`, name: `${t.name} ${y}`, theme: t.theme, tagline: t.tagline, festival_date: date, ...w,
+        discount_pct: t.discount_pct, min_pct: t.min_pct, max_pct: t.max_pct, active: 1, show_popup: 1, rules: [] });
+    }
+  });
+  return out;
+}
+
 /* ---------- in-memory snapshot ---------- */
 let snap = { campaigns: [], coupons: null, cap: DEFAULT_CAP, at: 0 };
 let loading = null;
@@ -102,6 +122,7 @@ async function load() {
 }
 /** Reload the snapshot (deduplicated). Never throws: on failure the previous snapshot stays in use. */
 function refresh() {
+  if (builtinEnabled()) { snap = { campaigns: builtinCampaigns(), coupons: null, cap: DEFAULT_CAP, at: Date.now() }; return Promise.resolve(); }
   if (!mysql.isConfigured()) return Promise.resolve();
   if (!loading) loading = load().catch(e => { console.warn('festival refresh failed:', e.message); snap.at = Date.now() - REFRESH_MS + 10000; }).finally(() => { loading = null; });
   return loading;
@@ -121,4 +142,4 @@ function publicView(products = [], at = now()) {
   return { now: new Date(at).toISOString(), live: live.map(shape), next: nxt ? shape(nxt) : null };
 }
 
-module.exports = { TEMPLATES, MOVABLE_DATES, DEFAULT_CAP, HORIZON_YEARS, windowFor, festivalDate, addDays, istToday, ensureSeeded, generateCampaigns, refresh, ensureFresh, current, setSnapshot, publicView };
+module.exports = { builtinCampaigns, TEMPLATES, MOVABLE_DATES, DEFAULT_CAP, HORIZON_YEARS, windowFor, festivalDate, addDays, istToday, ensureSeeded, generateCampaigns, refresh, ensureFresh, current, setSnapshot, publicView };

@@ -1,4 +1,5 @@
 import { html, raw, render, get, post, $, $$, state, money, stars, addToCart, toggleWish, toast, onSubmit, fmtDate } from '../core.js';
+import { festivalNote } from '../festival.js';
 import { icon, productCard, priceBlock, discount, actions, thumb, waLink, pageUrl } from '../components.js';
 import { openCart, go } from '../app.js';
 
@@ -34,7 +35,7 @@ export default async function product({ el, params, onLeave }) {
         <p class="eyebrow">${p.collection}</p>
         <h1>${p.name}</h1>
         <a class="rate-link" href="#reviews" data-action="to-reviews">${p.reviews ? html`${stars(p.rating)} <span>${p.rating} · ${p.reviews} review${p.reviews > 1 ? 's' : ''}</span>` : 'Be the first to review'}</a>
-        ${priceBlock(p)}<p class="tax-note">Inclusive of all taxes</p>
+        ${priceBlock(p)}${festivalNote(p)}<p class="tax-note">Inclusive of all taxes</p>
         <p class="tagline">${p.tagline}</p>
 
         <fieldset class="sizes" id="sizes"><legend>Size <button type="button" class="link-btn" data-action="size-guide">Size guide</button></legend>

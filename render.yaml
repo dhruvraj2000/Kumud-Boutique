@@ -10,6 +10,10 @@ services:
     envVars:
       - key: KUMUD_DB
         value: /var/data/kumud.db
+      - key: MYSQL_URL
+        sync: false           # hosted MySQL connection string for bookings + admin portal
+      - key: NODE_ENV
+        value: production
       - key: ADMIN_PASSWORD
         sync: false           # you enter this in the Render dashboard
       - key: RAZORPAY_KEY_ID

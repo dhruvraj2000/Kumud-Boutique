@@ -1,5 +1,6 @@
 import { html, render, get, money, stars, state } from '../core.js';
 import { icon, productCard, trustBar, thumb, waLink } from '../components.js';
+import { festivalSection, festivalPicks } from '../festival.js';
 
 // designer options: [label, hex]
 const SKIRTS = [['Madder red', '#9c2a2f'], ['Indigo', '#27407d'], ['Noir', '#1d1a20'], ['Mint', '#4fc4a0'], ['Ivory', '#f1e8da'], ['Rani pink', '#cf2f6b']];
@@ -68,6 +69,25 @@ export default async function home({ el, onLeave }) {
     </div>
   </section>
 
+  ${festivalSection()}
+  ${festivalPicks(products)}
+
+  <section class="ad-anarkali wrap" aria-label="New: Rani Pink Anarkali">
+    <div class="ad-card" data-reveal>
+      <div class="ad-copy">
+        <span class="ad-tag">New · Festive ’26</span>
+        <h2>Rani Pink, in <em>pearl &amp; gold.</em></h2>
+        <p>A tiered anarkali in soft chanderi, edged in gold lace, with hand-embroidered zari sleeves and a pearl-drop neckline. Made to your measure in Udaipur.</p>
+        <ul class="ad-points"><li>Hand-embroidered zari, gota &amp; kundan</li><li>Stitched to your measurements</li><li>Limited pieces this season</li></ul>
+        <div class="ad-actions"><a class="btn btn-gold" href="#/product/rani-pink-tiered-anarkali">Shop now ${icon('arrow')}</a><a class="btn btn-ghost" href="#/contact">Book a fitting</a></div>
+      </div>
+      <div class="ad-art">
+        <a class="ad-main" href="#/lookbook"><img src="/assets/lookbook/pink-anarkali-full.jpg" alt="Rani pink tiered anarkali with gold lace on a studio mannequin" width="768" height="1024" loading="lazy" decoding="async"></a>
+        <a class="ad-detail" href="#/lookbook"><img src="/assets/lookbook/pink-anarkali-sleeve.jpg" alt="Zari and pearl-drop embroidered sleeve detail" width="472" height="1024" loading="lazy" decoding="async"></a>
+      </div>
+    </div>
+  </section>
+
   <section class="sstory" aria-label="Kumud story">
     <div class="ss-stage">
       <div class="ss-bg ss-bg2" data-ss="bg2"></div>
@@ -104,6 +124,13 @@ export default async function home({ el, onLeave }) {
     <div class="grid">${featured.map((p, i) => productCard(p, i))}</div>
   </section>
 
+  <section class="wrap section">
+    <a class="ad-wide" href="#/product/rani-pink-tiered-anarkali" data-reveal>
+      <div class="ad-wide-art"><img src="/assets/lookbook/pink-anarkali-neckline.jpg" alt="Pearl-drop neckline and zari sleeve on the Rani Pink Anarkali" width="768" height="1024" loading="lazy" decoding="async"></div>
+      <div class="ad-wide-copy"><p class="eyebrow">Handwork you can see</p><h2>Every pearl, <em>stitched by hand.</em></h2><p>Gold gota, zari vines and pearl drops, finished at the neckline and sleeves of our Rani Pink Anarkali.</p><span class="btn btn-gold">Shop the anarkali ${icon('arrow')}</span></div>
+    </a>
+  </section>
+
   <section class="lb-teaser">
     <div class="wrap lbt-grid">
       <div class="lbt-copy" data-reveal><p class="eyebrow">The Lookbook</p><h2>Seen on <em>real</em> people.</h2>
@@ -137,6 +164,14 @@ export default async function home({ el, onLeave }) {
     <a class="twin-band" href="#/twinning" data-reveal>
       <div class="tb-art"><img src="/assets/products/white-patchwork-lehenga.webp" alt="Safed Patchwork lehenga set, with a matching mini set for girls" loading="lazy" width="1200" height="1500"></div>
       <div class="tb-copy"><p class="eyebrow">New ✦ Mother &amp; Daughter</p><h2>Twinning, made to measure.</h2><p>Matching sets for you and your little one${state.meta && state.meta.twinningPercent ? html` — <b>${state.meta.twinningPercent}% off</b> when you buy the pair` : ''}.</p><span class="btn btn-gold">Shop twinning ${icon('arrow')}</span></div>
+    </a>
+  </section>
+
+  <section class="wrap section">
+    <a class="ad-strip" href="#/shop?category=Anarkali" data-reveal>
+      <img src="/assets/lookbook/pink-anarkali-sleeve.jpg" alt="" width="472" height="1024" loading="lazy" decoding="async">
+      <div><small>The Festive Anarkali edit</small><strong>Tiers, gold lace &amp; pearl drops — made to your measure.</strong></div>
+      <span class="btn btn-ghost">Explore ${icon('arrow')}</span>
     </a>
   </section>
 

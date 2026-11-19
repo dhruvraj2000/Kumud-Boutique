@@ -37,7 +37,7 @@ export const waLink = text => (state.meta && state.meta.whatsapp ? `https://wa.m
 export const pageUrl = hash => location.origin + '/' + hash;
 export const discount = p => (p.compareAt ? Math.round((1 - p.price / p.compareAt) * 100) : 0);
 
-export const priceBlock = p => html`<p class="price"><span class="now">${money(p.price)}</span>${p.compareAt ? html` <s>${money(p.compareAt)}</s> <span class="off">${discount(p)}% off</span>` : ''}</p>`;
+export const priceBlock = p => html`<p class="price ${p.festivalPct ? 'is-fest' : ''}"><span class="now">${money(p.price)}</span>${p.compareAt ? html` <s>${money(p.compareAt)}</s> <span class="off">${discount(p)}% off</span>` : ''}</p>`;
 
 export const productIndex = new Map();
 export function productCard(p, i = 0) {
@@ -48,6 +48,7 @@ export function productCard(p, i = 0) {
     <a class="card-media" href="#/product/${p.slug}" aria-label="${p.name}">
       <img class="img-a" src="${thumb(p.images[0])}" alt="${p.name}" width="600" height="750" loading="lazy" decoding="async">
       ${p.images[1] ? html`<img class="img-b" src="${thumb(p.images[1])}" alt="" width="600" height="750" loading="lazy" decoding="async">` : ''}
+      ${p.festivalPct && p.inStock ? html`<span class="fest-badge" title="${p.festival}"><b>${p.festivalPct}%</b> OFF</span>` : ''}
       ${!p.inStock ? html`<span class="tag tag-sold">Sold out</span>` : p.badge ? html`<span class="tag">${p.badge}</span>` : p.lowStock ? html`<span class="tag tag-low">Few left</span>` : ''}
     </a>
     <button class="wish ${wished ? 'on' : ''}" data-action="wish" data-id="${p.id}" aria-pressed="${wished}" aria-label="${wished ? 'Remove from' : 'Add to'} wishlist: ${p.name}">${icon('heart')}</button>

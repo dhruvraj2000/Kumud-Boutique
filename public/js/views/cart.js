@@ -7,12 +7,14 @@ export const setCoupon = c => { try { c ? localStorage.setItem('kb_coupon', c) :
 /** Order summary block shared by the cart page and checkout. */
 export const summary = (q, { editable = true } = {}) => html`
   <div class="sum-rows">
+    ${q.festivalSavings ? html`<p class="disc fest"><span>Festival savings <small>already in prices</small></span><b>− ${money(q.festivalSavings)}</b></p>` : ''}
     <p><span>Subtotal</span><b>${money(q.subtotal)}</b></p>
     ${q.discount ? html`<p class="disc"><span>Discount <small>${q.coupon}</small></span><b>− ${money(q.discount)}</b></p>` : ''}
     ${q.twinning ? html`<p class="disc twin"><span>Twinning offer <small>${q.twinPercent}% off ${q.twinPairs > 1 ? q.twinPairs + ' pairs' : 'the pair'}</small></span><b>− ${money(q.twinning)}</b></p>` : ''}
     <p><span>Shipping</span><b>${q.shipping ? money(q.shipping) : 'Free'}</b></p>
     <p class="total"><span>Total</span><b>${money(q.total)}</b></p>
   </div>
+  ${q.discountLimited ? html`<p class="ship-hint">Your extra discounts were trimmed to stay within this sale's maximum.</p>` : ''}
   ${editable && q.shipping > 0 ? html`<p class="ship-hint">Add ${money(q.freeShippingMin - q.subtotal)} more for free shipping.</p>` : ''}`;
 
 export const couponBox = (q, coupon) => html`<div class="coupon" id="couponForm">

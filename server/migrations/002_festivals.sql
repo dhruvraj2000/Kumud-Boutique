@@ -1,0 +1,30 @@
+CREATE TABLE festival_templates(
+  id INT AUTO_INCREMENT PRIMARY KEY, slug VARCHAR(60) NOT NULL UNIQUE, name VARCHAR(120) NOT NULL, theme VARCHAR(30) NOT NULL DEFAULT 'gold',
+  kind ENUM('fixed','movable') NOT NULL, month TINYINT NULL, day TINYINT NULL,
+  lead_days SMALLINT NOT NULL DEFAULT 7, tail_days SMALLINT NOT NULL DEFAULT 1,
+  discount_pct TINYINT NOT NULL, min_pct TINYINT NOT NULL DEFAULT 0, max_pct TINYINT NOT NULL, tagline VARCHAR(200) NOT NULL DEFAULT '',
+  auto_create TINYINT(1) NOT NULL DEFAULT 1, active TINYINT(1) NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE festival_dates(
+  template_id INT NOT NULL, year SMALLINT NOT NULL, date DATE NOT NULL, PRIMARY KEY(template_id, year),
+  FOREIGN KEY (template_id) REFERENCES festival_templates(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE campaigns(
+  id INT AUTO_INCREMENT PRIMARY KEY, template_id INT NULL, year SMALLINT NULL, name VARCHAR(120) NOT NULL, slug VARCHAR(90) NOT NULL UNIQUE,
+  theme VARCHAR(30) NOT NULL DEFAULT 'gold', tagline VARCHAR(200) NOT NULL DEFAULT '', festival_date DATE NULL,
+  starts_at DATETIME NOT NULL, ends_at DATETIME NOT NULL,
+  discount_pct TINYINT NOT NULL, min_pct TINYINT NOT NULL DEFAULT 0, max_pct TINYINT NOT NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1, show_popup TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_template_year (template_id, year), INDEX(starts_at, ends_at),
+  FOREIGN KEY (template_id) REFERENCES festival_templates(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE campaign_rules(
+  id INT AUTO_INCREMENT PRIMARY KEY, campaign_id INT NOT NULL, scope ENUM('category','product') NOT NULL, target VARCHAR(120) NOT NULL, discount_pct TINYINT NOT NULL,
+  UNIQUE KEY uq_rule (campaign_id, scope, target), FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE campaign_skips(template_id INT NOT NULL, year SMALLINT NOT NULL, PRIMARY KEY(template_id, year)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE coupons(
+  code VARCHAR(20) PRIMARY KEY, label VARCHAR(120) NOT NULL, type ENUM('percent','flat','ship') NOT NULL, value INT NOT NULL DEFAULT 0, min_order INT NOT NULL DEFAULT 0,
+  starts_at DATETIME NULL, ends_at DATETIME NULL, active TINYINT(1) NOT NULL DEFAULT 1, max_uses INT NULL, used_count INT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE festival_settings(k VARCHAR(40) PRIMARY KEY, v VARCHAR(200) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4

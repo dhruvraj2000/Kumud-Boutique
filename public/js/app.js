@@ -1,13 +1,14 @@
 // App shell: router, page transitions, header/drawer/search behaviour, global click actions.
 import { $, $$, html, render, money, state, subscribe, cartCount, loadUser, get, post, quote, applyQuoteToCart, setQty, removeLine, addToCart, toggleWish, toast, esc, onSubmit } from './core.js';
 import { createLoader } from './loader.js';
+import { loadFestival, maybePopup } from './festival.js';
 import { actions, icon, productIndex, thumb, waLink, pageUrl } from './components.js';
 
 const app = $('#app'), main = $('#main');
 const ROUTES = [
   [/^\/?$/, 'home'], [/^\/shop$/, 'shop'], [/^\/product\/([\w-]+)$/, 'product'], [/^\/cart$/, 'cart'], [/^\/checkout$/, 'checkout'],
   [/^\/wishlist$/, 'wishlist'], [/^\/(login|register)$/, 'auth'], [/^\/account(?:\/(\w+))?$/, 'account'], [/^\/orders\/([\w-]+)$/, 'order'],
-  [/^\/track$/, 'track'], [/^\/lookbook$/, 'lookbook'], [/^\/twinning$/, 'twinning'], [/^\/(about|contact|shipping|size-guide|designer|care|faq|custom|book)$/, 'info'], [/^\/admin(?:\/(\w+))?$/, 'admin']
+  [/^\/track$/, 'track'], [/^\/lookbook$/, 'lookbook'], [/^\/twinning$/, 'twinning'], [/^\/(rent|book)$/, 'booking'], [/^\/(about|contact|shipping|size-guide|designer|care|faq|custom)$/, 'info'], [/^\/admin(?:\/(\w+))?$/, 'admin']
 ];
 let leaveFns = [], lastPath = null, navToken = 0;
 const progress = $('#progress');
@@ -45,6 +46,7 @@ async function route() {
   app.classList.remove('leaving'); app.classList.add('entering'); setTimeout(() => app.classList.remove('entering'), 600);
   observeReveal(app);
   progress.className = 'progress done';
+  maybePopup();
   if (!ctx.keepScroll && lastPath !== null) main.focus({ preventScroll: true });
 }
 
@@ -201,7 +203,7 @@ window.addEventListener('hashchange', route);
   loader.track(fxReady);
   try {
     try { state.meta = await get('/meta'); } catch { /* handled by views */ }
-    await loadUser(); updateBadges();
+    await Promise.all([loadUser(), loadFestival()]); updateBadges();
     if (state.cart.length && state.meta) { try { applyQuoteToCart(await quote()); } catch { /* ignore */ } }
     await route(); syncWa();
     loader.trackImages();                       // hero, logos, story images: everything not lazy

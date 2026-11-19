@@ -135,6 +135,24 @@ const PRODUCTS = [
     details: ['Soft cotton skirt with elastic-back waist', 'Ajrakh-print sleeveless choli', 'Light dupatta with tassels', 'Comfortable lining for little ones', 'Free length adjustment'],
     includes: ['Lehenga skirt', 'Choli', 'Dupatta'], care: 'Gentle hand wash in cold water. Wash the dupatta separately.',
     colors: ['Ivory White'], images: IMG('white-patchwork-lehenga.webp'), stock: KIDS(3, 4, 4, 4, 3, 2)
+  },
+  {
+    slug: 'rani-pink-tiered-anarkali', name: 'Rani Pink Tiered Anarkali', category: 'Anarkali', collection: 'Festive Anarkali',
+    price: 12490, compare_at: null, badge: 'New', featured: 1, sort: 0,
+    tagline: 'Rani pink in soft chanderi, edged in gold, finished in pearl.',
+    description: 'A tiered, floor-length anarkali in rani-pink chanderi, each tier edged with fine gold lace. The scooped neckline carries gold gota and a fringe of pearl drops, and the half sleeves are hand-embroidered with bands of zari vines, gota and kundan, ending in a hem of hanging pearls.',
+    details: ['Tiered flared skirt with gold lace edging', 'Scooped neckline with gota and pearl-drop fringe', 'Half sleeves hand-embroidered in zari, gota and kundan', 'Tie-up back with tassel', 'Made-to-measure alterations available'],
+    includes: ['Anarkali dress'], care: 'Dry clean only. Store folded in muslin; do not iron directly on embroidery or pearls.',
+    colors: ['Rani Pink'], images: IMG('pink-anarkali-full.jpg', 'pink-anarkali-neckline.jpg', 'pink-anarkali-sleeve.jpg'), stock: SIZES(2, 4, 6, 4, 2)
+  },
+  {
+    slug: 'neel-moti-pearl-blouse', name: 'Neel Moti Pearl Blouse', category: 'Blouses', collection: 'Handwork Edit',
+    price: 5990, compare_at: null, badge: 'New', featured: 0, sort: 2,
+    tagline: 'Powder-blue, beaded stripe by stripe in pearl and glass.',
+    description: 'A fitted, strappy blouse in powder blue, hand-beaded all over in a diamond pattern of pearls and silver glass beads. The pattern meets in a concentric diamond at the centre of the bust and back, and the back hem is finished with a row of larger hanging pearls.',
+    details: ['All-over hand-beaded pearl and glass-bead diamond pattern', 'Sweetheart neckline with adjustable straps', 'Pearl-drop hem at the back', 'Structured, lined bodice', 'Made-to-measure alterations available'],
+    includes: ['Blouse'], care: 'Dry clean only. Store flat in muslin; do not iron directly on beadwork.',
+    colors: ['Powder Blue'], images: IMG('pearl-blouse-front.jpg', 'pearl-blouse-back.jpg'), stock: SIZES(2, 4, 6, 4, 2)
   }
 ];
 
@@ -161,6 +179,15 @@ const LOOKS = [
     spots: [{ x: 52, y: 32, slug: 'safed-patchwork-lehenga-set', label: 'Ajrakh halter choli' }, { x: 54, y: 69, slug: 'safed-patchwork-lehenga-set', label: 'Patchwork skirt' }] },
   { id: 'garba', title: 'Garba Night', kicker: 'Garba Nights', image: '/assets/lookbook/garba-night.webp', w: 1080, h: 1440,
     text: 'Block-printed black skirts, Ajrakh dupattas and gold-striped hems — made for garba nights and the friends who share them.',
+    spots: [] },
+  { id: 'anarkali', title: 'Rani Pink Anarkali', kicker: 'Festive Anarkali', image: '/assets/lookbook/pink-anarkali-full.jpg', w: 768, h: 1024,
+    text: 'A tiered rani-pink anarkali in soft chanderi, each tier edged with a fine gold lace — it floats and swirls with every step.',
+    spots: [] },
+  { id: 'neckline', title: 'Pearl & Zari Neckline', kicker: 'Hand Embroidery', image: '/assets/lookbook/pink-anarkali-neckline.jpg', w: 768, h: 1024,
+    text: 'A scooped neckline finished with gold gota and a fringe of tiny pearl drops, matched by zari-striped sleeves.',
+    spots: [] },
+  { id: 'sleeve', title: 'The Sleeve Detail', kicker: 'Zari & Kundan', image: '/assets/lookbook/pink-anarkali-sleeve.jpg', w: 472, h: 1024,
+    text: 'Bands of zari vines, gold gota and kundan work, ending in a hem of hanging pearl drops — stitched by hand, stitch by stitch.',
     spots: [] }
 ];
 

@@ -3,6 +3,9 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const { db, tx, hashPassword, COUPONS, LOOKS, getSetting, setSetting } = require('./db');
+const fest = require('./festival-data');
+const FP = require('./festival-pricing');
+const mysqlDb = require('./mysql');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,6 +51,7 @@ app.use('/api', (req, res, next) => {
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && Number(req.headers['content-length'] || 0) > 0 && !req.is('application/json')) return next(bad('JSON required'));
   next();
 });
+app.use('/api', fest.ensureFresh);
 const needUser = (req, res, next) => (req.user ? next() : next(new HttpError(401, 'Please sign in to continue.')));
 const needAdmin = (req, res, next) => (req.user && req.user.role === 'admin' ? next() : next(new HttpError(403, 'Admins only.')));
 
@@ -77,7 +81,23 @@ function shapeProduct(r) {
     twinSlug: r.twin_slug || '', kids: r.category === 'Kids'
   };
 }
-const allProducts = () => db.prepare('SELECT * FROM products WHERE active=1 ORDER BY sort,id').all().map(shapeProduct);
+/* ---------- festival sales ---------- */
+// Applies the best live campaign to a shaped product: price becomes the sale price, the old price moves to compareAt.
+function withSale(p, at = Date.now()) {
+  if (!p) return p;
+  const snap = fest.current(), live = FP.liveCampaigns(snap.campaigns, at);
+  const o = FP.bestOffer(live, p, snap.cap);
+  if (!o.pct) return p;
+  return { ...p, price: FP.salePrice(p.price, o.pct), compareAt: Math.max(p.compareAt || 0, p.price), festivalPct: o.pct, festival: o.campaign.name, festivalMax: o.campaign.max_pct };
+}
+const allProducts = () => db.prepare('SELECT * FROM products WHERE active=1 ORDER BY sort,id').all().map(shapeProduct).map(p => withSale(p));
+// coupons: MySQL (with dates, usage limits, on/off) when configured, else the built-in list
+function couponList(at = Date.now()) {
+  const m = fest.current().coupons;
+  if (!m) return Object.entries(COUPONS).map(([code, c]) => ({ code, ...c, min_order: c.min }));
+  return Object.values(m).filter(c => c.active && (!c.starts_at || at >= FP.toMs(c.starts_at)) && (!c.ends_at || at <= FP.toMs(c.ends_at)) && (c.max_uses == null || c.used_count < c.max_uses));
+}
+const findCoupon = code => couponList().find(c => c.code === code);
 
 app.get('/api/meta', (req, res) => {
   const ps = allProducts();
@@ -89,8 +109,13 @@ app.get('/api/meta', (req, res) => {
     whatsapp: getSetting('whatsapp'), twinningPercent: twinPct(), razorpayKeyId: rzpOn() ? rzp().id : '',
     priceMin: Math.min(...ps.map(p => p.price)), priceMax: Math.max(...ps.map(p => p.price)),
     freeShippingMin: FREE_SHIP_MIN, shippingFee: SHIP_FEE, maxQty: MAX_QTY,
-    coupons: Object.entries(COUPONS).map(([code, c]) => ({ code, label: c.label }))
+    coupons: couponList().map(c => ({ code: c.code, label: c.label }))
   });
+});
+
+app.get('/api/festivals/current', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=30');
+  res.json(fest.publicView(allProducts().map(p => ({ id: p.id, category: p.category }))));
 });
 
 app.get('/api/products', (req, res) => {
@@ -112,10 +137,10 @@ app.get('/api/products', (req, res) => {
 app.get('/api/products/:slug', (req, res, next) => {
   const row = db.prepare('SELECT * FROM products WHERE slug=? AND active=1').get(req.params.slug);
   if (!row) return next(new HttpError(404, 'Product not found'));
-  const p = shapeProduct(row);
+  const p = withSale(shapeProduct(row));
   const reviews = db.prepare('SELECT id,author,rating,title,body,created_at FROM reviews WHERE product_id=? ORDER BY id DESC').all(p.id);
   const related = allProducts().filter(x => x.id !== p.id).sort((a, b) => (b.collection === p.collection) - (a.collection === p.collection)).slice(0, 4);
-  const twin = p.twinSlug ? shapeProduct(db.prepare('SELECT * FROM products WHERE slug=? AND active=1').get(p.twinSlug)) : null;
+  const twin = p.twinSlug ? withSale(shapeProduct(db.prepare('SELECT * FROM products WHERE slug=? AND active=1').get(p.twinSlug))) : null;
   res.json({ product: p, reviews, related, twin });
 });
 
@@ -288,12 +313,12 @@ function quote(rawItems, couponCode) {
   for (const it of merged.values()) {
     const row = db.prepare('SELECT * FROM products WHERE id=? AND active=1').get(it.id);
     if (!row) { warnings.push({ id: it.id, size: it.size, message: 'An item is no longer available and was removed.', remove: true }); continue; }
-    const p = shapeProduct(row), avail = p.stock[it.size];
+    const p = withSale(shapeProduct(row)), avail = p.stock[it.size];
     if (avail === undefined) { warnings.push({ id: it.id, size: it.size, message: `Please choose a size for ${p.name}.`, remove: true }); continue; }
     let qty = it.qty;
     if (avail <= 0) { warnings.push({ id: it.id, size: it.size, message: `${p.name} (${it.size}) is sold out and was removed.`, remove: true }); continue; }
     if (qty > avail) { warnings.push({ id: it.id, size: it.size, message: `Only ${avail} of ${p.name} (${it.size}) left — quantity adjusted.`, qty: avail }); qty = avail; }
-    lines.push({ id: p.id, slug: p.slug, name: p.name, image: p.images[0], size: it.size, qty, price: p.price, compareAt: p.compareAt, available: avail, lineTotal: p.price * qty });
+    lines.push({ id: p.id, slug: p.slug, name: p.name, image: p.images[0], size: it.size, qty, price: p.price, compareAt: p.compareAt, festivalPct: p.festivalPct || 0, festivalMax: p.festivalMax || null, original: p.compareAt && p.festivalPct ? p.compareAt : p.price, available: avail, lineTotal: p.price * qty });
   }
   const subtotal = lines.reduce((a, l) => a + l.lineTotal, 0);
   // twinning: a set and its matching twin bought together get a pair discount
@@ -309,15 +334,20 @@ function quote(rawItems, couponCode) {
   let shipping = subtotal >= FREE_SHIP_MIN || !lines.length ? 0 : SHIP_FEE, discount = 0, coupon = null, couponMessage = '';
   const code = str(couponCode, 20).toUpperCase();
   if (code) {
-    const c = COUPONS[code];
-    if (!c) couponMessage = 'That code is not valid.';
-    else if (subtotal < c.min) couponMessage = `${code} needs a minimum order of ₹${c.min.toLocaleString('en-IN')}.`;
+    const c = findCoupon(code);
+    if (!c) couponMessage = 'That code is not valid or has expired.';
+    else if (subtotal < c.min_order) couponMessage = `${code} needs a minimum order of ₹${c.min_order.toLocaleString('en-IN')}.`;
     else {
       coupon = code; couponMessage = c.label + ' applied';
-      if (c.type === 'percent') discount = Math.round(subtotal * c.value / 100); else if (c.type === 'flat') discount = c.value; else shipping = 0;
+      if (c.type === 'percent') discount = Math.round(subtotal * c.value / 100); else if (c.type === 'flat') discount = Math.min(c.value, subtotal); else shipping = 0;
     }
   }
-  return { lines, warnings, subtotal, shipping, discount, coupon, couponMessage, twinning, twinPairs: pairs, twinPercent: pct,
+  // festival sale + coupon + twinning may stack, but never past the live campaign's maximum discount (margin guard)
+  const original = lines.reduce((a, l) => a + l.original * l.qty, 0), festivalSavings = original - subtotal;
+  const caps = lines.filter(l => l.festivalMax != null).map(l => l.festivalMax);
+  const g = FP.capExtras(original, festivalSavings, caps.length ? Math.max(...caps) : null, discount, twinning);
+  if (g.limited) { discount = g.coupon; twinning = g.twinning; couponMessage = (couponMessage ? couponMessage + ' — ' : '') + "reduced to stay within this sale's maximum discount"; }
+  return { lines, warnings, subtotal, shipping, discount, coupon, couponMessage, twinning, twinPairs: pairs, twinPercent: pct, festivalSavings, originalSubtotal: original, discountLimited: g.limited,
     total: Math.max(0, subtotal - discount - twinning + shipping), freeShippingMin: FREE_SHIP_MIN };
 }
 app.post('/api/cart/quote', (req, res, next) => {
@@ -406,6 +436,7 @@ app.post('/api/orders', limit('order', 20, 60000), (req, res, next) => {
       return number;
     });
   } catch (e) { return next(e); }
+  if (req.body.coupon && fest.current().coupons) { const used = str(req.body.coupon, 20).toUpperCase(); if (findCoupon(used) || fest.current().coupons[used]) mysqlDb.query('UPDATE coupons SET used_count=used_count+1 WHERE code=?', [used]).catch(() => {}); }
   res.status(201).json({ order: outOrder(loadOrder(order)) });
 });
 
@@ -562,6 +593,16 @@ app.get('/api/admin/launch', needAdmin, (req, res) => {
 });
 app.get('/api/admin/inquiries', needAdmin, (req, res) => res.json({ inquiries: db.prepare('SELECT * FROM inquiries ORDER BY id DESC LIMIT 100').all() }));
 
+/* ---------- bookings (MySQL) + admin portal ---------- */
+app.use('/api', require('./booking-routes'));
+const { authRouter, requireAdmin } = require('./admin-auth');
+app.use('/api/portal/auth', authRouter);
+app.use('/api/portal', requireAdmin, require('./admin-routes'));
+app.get('/admin', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex');
+  res.sendFile(path.join(__dirname, '..', 'public', 'admin', 'index.html'));
+});
+
 /* ---------- static + errors ---------- */
 const PUB = path.join(__dirname, '..', 'public');
 app.use('/assets', express.static(path.join(PUB, 'assets'), { maxAge: '7d', immutable: true }));
@@ -572,8 +613,9 @@ app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') err = bad('Invalid request.');
   const status = err.status || 500;
   if (status >= 500) console.error(err);
-  res.status(status).json({ error: status >= 500 ? 'Something went wrong. Please try again.' : err.message, field: err.field });
+  res.status(status).json({ error: status >= 500 && status !== 503 ? 'Something went wrong. Please try again.' : err.message, field: err.field });
 });
 
+if (require.main === module) fest.refresh();
 if (require.main === module) app.listen(PORT, () => console.log(`Kumud Boutique running → http://localhost:${PORT}`));
 module.exports = app;

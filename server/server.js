@@ -114,7 +114,7 @@ app.get('/api/meta', (req, res) => {
 });
 
 app.get('/api/festivals/current', (req, res) => {
-  res.setHeader('Cache-Control', 'public, max-age=30');
+  res.setHeader('Cache-Control', 'no-cache');   // the response carries the server clock; a cached copy would make countdowns drift
   res.json(fest.publicView(allProducts().map(p => ({ id: p.id, category: p.category }))));
 });
 

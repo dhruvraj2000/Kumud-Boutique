@@ -908,3 +908,4 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   .btn-primary:hover::after,.btn-gold:hover::after{transform:translateX(130%)}
 }
 @media(prefers-reduced-motion:reduce){.btn-primary::after,.btn-gold::after{display:none}}
+.fest-at{letter-spacing:.08em;text-transform:none;opacity:.85;color:#fff}

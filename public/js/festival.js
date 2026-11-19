@@ -15,8 +15,8 @@ export const activeFestival = main;
 
 export async function loadFestival() {
   try {
-    const d = await get('/festivals/current');
-    fest.live = d.live || []; fest.next = d.next || null; fest.offset = Date.parse(d.now) - Date.now(); fest.loaded = true;
+    const t0 = Date.now(), d = await get('/festivals/current'), t1 = Date.now();
+    fest.live = d.live || []; fest.next = d.next || null; fest.offset = Date.parse(d.now) - (t0 + t1) / 2; fest.loaded = true;   // server time vs this device, corrected for network delay
   } catch { /* the shop works fine without sale info */ }
   applyTheme(); renderBar(); startTick();
   window.dispatchEvent(new CustomEvent('kb:festival'));
@@ -34,6 +34,8 @@ export function fmtLeft(ms) {
   const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), x = s % 60, p = n => String(n).padStart(2, '0');
   return d ? `${d}d ${p(h)}h ${p(m)}m ${p(x)}s` : `${p(h)}:${p(m)}:${p(x)}`;
 }
+/** 'Mon, 15 Dec, 12:00 am IST' - always India time, whatever the visitor's timezone, so the date a customer reads is the date the sale runs. */
+export const istLabel = iso => new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }) + ' IST';
 const countdown = iso => html`<span class="fest-count" data-countdown="${iso}" aria-live="off">${fmtLeft(Date.parse(iso) - now())}</span>`;
 const boxes = iso => {
   const ms = Math.max(0, Date.parse(iso) - now()), s = Math.floor(ms / 1000), v = [Math.floor(s / 86400), Math.floor(s % 86400 / 3600), Math.floor(s % 3600 / 60), s % 60];
@@ -78,7 +80,7 @@ export function festivalSection() {
         <p class="eyebrow light">${f ? 'Limited-time festival offer' : 'Coming soon'}</p>
         <h2>${x.name}</h2>
         <p class="fest-tag">${x.tagline}</p>
-        <p class="fest-when">${f ? 'Sale ends in' : 'Sale starts in'}</p>
+        <p class="fest-when">${f ? 'Sale ends in' : 'Sale starts in'} <span class="fest-at">· ${f ? istLabel(f.endsAt) : istLabel(u.startsAt)}</span></p>
         ${boxes(f ? f.endsAt : u.startsAt)}
         <div class="hero-cta"><a class="btn btn-gold" href="${f ? '#/shop?sale=1' : '#/shop'}">${f ? 'Shop the sale' : 'Browse the collection'} ${icon('arrow')}</a>${f ? '' : ''}</div>
       </div>

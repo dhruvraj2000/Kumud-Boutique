@@ -170,7 +170,7 @@ const PRODUCTS = [
     description: 'A full-flare mint-green satin lehenga cut on a wide circle, so it opens beautifully when you spin. A rani-pink satin band edged in silver sequin lace runs through the skirt, matched with a pink pin-tuck halter choli and a hand-tied bandhani dupatta with a woven gold pallu and lace trim.',
     details: ['Full-circle satin skirt with rani-pink band', 'Silver sequin lace borders', 'Pin-tuck halter choli with lace yoke', 'Bandhani dupatta with zari pallu', 'Made-to-measure alterations available'],
     includes: ['Lehenga skirt', 'Choli', 'Dupatta'], care: 'Dry clean only. Steam on low; do not iron directly on lace.',
-    colors: ['Mint & Rani Pink'], images: IMG('hara-satin-1.webp', 'hara-satin-2.webp'), stock: SIZES(2, 4, 6, 4, 2)
+    colors: ['Mint & Rani Pink'], images: IMG('hara-satin-1.webp'), stock: SIZES(2, 4, 6, 4, 2)
   },
   {
     slug: 'safed-patchwork-mini-set', name: 'Safed Patchwork Mini Set', category: 'Kids', collection: 'Twinning',
@@ -265,7 +265,7 @@ function seed() {
   }
 }
 seed();
-const RETIRED_IMAGES = ['twinning-patchwork-1.webp'];
+const RETIRED_IMAGES = ['twinning-patchwork-1.webp', 'hara-satin-2.webp'];
 // catalogue upgrades for existing databases: add new pieces, link twins, append new photos (stock and prices are left alone)
 for (const p of PRODUCTS) {
   const row = db.prepare('SELECT id,images,twin_slug FROM products WHERE slug=?').get(p.slug);

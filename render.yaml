@@ -10,8 +10,6 @@ services:
     envVars:
       - key: KUMUD_DB
         value: /var/data/kumud.db
-      - key: MYSQL_URL
-        sync: false           # hosted MySQL connection string for bookings + admin portal
       - key: NODE_ENV
         value: production
       - key: ADMIN_PASSWORD
@@ -20,22 +18,8 @@ services:
         generateValue: true   # encrypts 2FA secrets + signs CSRF tokens
       - key: REQUIRE_ADMIN_MFA
         value: '1'
-      - key: BASE_URL
-        sync: false           # https://your-domain
-      - key: ALERT_EMAIL
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: MAIL_FROM
-        sync: false
-      - key: GOOGLE_MAPS_API_KEY
-        sync: false           # browser key, referrer-restricted
-      - key: GOOGLE_MAPS_SERVER_KEY
-        sync: false           # server key, IP-restricted
-      - key: RAZORPAY_KEY_ID
-        sync: false
-      - key: RAZORPAY_KEY_SECRET
-        sync: false
+    # Optional extras you can add later in the Render dashboard (Environment): BASE_URL, ALERT_EMAIL + RESEND_API_KEY + MAIL_FROM,
+    # MYSQL_URL (bookings), GOOGLE_MAPS_API_KEY / GOOGLE_MAPS_SERVER_KEY, RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET.
     disk:
       name: kumud-data
       mountPath: /var/data

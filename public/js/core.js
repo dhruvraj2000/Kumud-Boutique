@@ -17,14 +17,26 @@ export const fmtDate = (d, withTime) => {
 export const stars = r => html`<span class="stars" role="img" aria-label="${r} out of 5 stars">${[1, 2, 3, 4, 5].map(i => html`<svg viewBox="0 0 20 20" class="${i <= Math.round(r) ? 'on' : ''}"><path d="M10 1.8l2.4 5.2 5.6.6-4.2 3.8 1.2 5.6L10 14.2 5 17l1.2-5.6L2 7.6l5.6-.6z"/></svg>`)}</span>`;
 
 /* ---------- API ---------- */
-export class ApiError extends Error { constructor(msg, status, field) { super(msg); this.status = status; this.field = field; } }
+/* ---------- anonymous visitor id (links page views to an enquiry or sign-in; no personal data) ---------- */
+export const visitorId = () => {
+  try { let v = localStorage.getItem('kb_vid'); if (!v) { v = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2) + '0000000000000000'); localStorage.setItem('kb_vid', v); } return v; } catch { return ''; }
+};
+let lastTracked = '';
+export function trackVisit(path) {
+  if (navigator.doNotTrack === '1' || path.startsWith('/admin') || path === lastTracked) return;
+  const vid = visitorId(); if (!vid) return;
+  lastTracked = path;
+  try { fetch('/api/visit', { method: 'POST', keepalive: true, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vid, page: path, ref: document.referrer || '' }) }).catch(() => {}); } catch { /* analytics must never break the page */ }
+}
+
+export class ApiError extends Error { constructor(msg, status, field, data) { super(msg); this.status = status; this.field = field; this.data = data || {}; } }
 export async function api(method, url, body) {
   let res;
   try {
-    res = await fetch('/api' + url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined, credentials: 'same-origin' });
+    res = await fetch('/api' + url, { method, headers: { ...(visitorId() && navigator.doNotTrack !== '1' ? { 'X-Visitor-Id': visitorId() } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}), ...(state.csrf ? { 'X-CSRF-Token': state.csrf } : {}) }, body: body ? JSON.stringify(body) : undefined, credentials: 'same-origin' });
   } catch { throw new ApiError('You appear to be offline. Please check your connection and try again.', 0); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.error || 'Something went wrong.', res.status, data.field);
+  if (!res.ok) throw new ApiError(data.error || 'Something went wrong.', res.status, data.field, data);
   return data;
 }
 export const get = u => api('GET', u), post = (u, b = {}) => api('POST', u, b), put = (u, b = {}) => api('PUT', u, b), patch = (u, b = {}) => api('PATCH', u, b), del = u => api('DELETE', u);
@@ -36,7 +48,7 @@ const emit = what => listeners.forEach(fn => fn(what));
 const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } };
 
-export const state = { user: null, cart: read('kb_cart', []), wish: new Set(read('kb_wish', [])), meta: null };
+export const state = { user: null, csrf: '', cart: read('kb_cart', []), wish: new Set(read('kb_wish', [])), meta: null };
 export const cartCount = () => state.cart.reduce((a, l) => a + l.qty, 0);
 const saveCart = () => { write('kb_cart', state.cart); emit('cart'); };
 
@@ -65,7 +77,7 @@ export const applyQuoteToCart = q => {   // reconcile local cart with server tru
   if (changed) saveCart();
   return changed;
 };
-export const quote = (coupon) => post('/cart/quote', { items: state.cart.map(({ id, size, qty }) => ({ id, size, qty })), coupon });
+export const quote = (coupon, loc, pincode) => post('/cart/quote', { items: state.cart.map(({ id, size, qty }) => ({ id, size, qty })), coupon, location: loc || undefined, pincode: pincode || undefined });
 
 const saveWish = () => { write('kb_wish', [...state.wish]); emit('wish'); };
 export async function toggleWish(id) {
@@ -77,13 +89,22 @@ export async function toggleWish(id) {
 }
 
 export async function loadUser() {
-  try { state.user = (await get('/auth/me')).user; } catch { state.user = null; }
+  try { const r = await get('/auth/me'); state.user = r.user; state.csrf = r.csrf || ''; } catch { state.user = null; }
+  guardIdle();
   if (state.user) {
     try { const r = await put('/wishlist', { ids: [...state.wish] }); state.wish = new Set(r.ids); saveWish(); } catch { /* ignore */ }
   }
   emit('user');
 }
-export function setUser(u) { state.user = u; emit('user'); }
+export function setUser(u, csrf) { state.user = u; if (csrf !== undefined) state.csrf = csrf || ''; emit('user'); guardIdle(); }
+// Staff sessions end after 20 minutes without activity (the server enforces 30; this signs out the screen first).
+let idleTimer = null;
+function guardIdle() {
+  clearTimeout(idleTimer); if (!state.user || !state.user.staff) return;
+  const bump = () => { clearTimeout(idleTimer); idleTimer = setTimeout(async () => { try { await post('/auth/logout'); } catch { /* already out */ } setUser(null, ''); toast('Signed out after 20 minutes of inactivity.', 'warn'); location.hash = '#/login?next=/admin'; }, 20 * 60000); };
+  if (!guardIdle.bound) { guardIdle.bound = true; ['pointerdown', 'keydown', 'scroll'].forEach(ev => addEventListener(ev, () => state.user && state.user.staff && bump(), { passive: true })); }
+  bump();
+}
 
 /* ---------- toasts ---------- */
 export function toast(msg, kind = 'ok') {
@@ -137,6 +158,8 @@ export async function payOnline(number, emailQs = '') {
       handler: async r => { try { await post(`/orders/${number}/verify${emailQs}`, r); resolve(true); } catch (e) { reject(e); } },
       modal: { ondismiss: () => resolve(false) }
     });
+    // the gateway reports a declined / failed attempt: record it so the order shows "Payment failed" and can be retried
+    rz.on('payment.failed', async r => { try { await post(`/orders/${number}/payment-failed${emailQs}`, { reason: (r && r.error && r.error.description) || 'Payment failed' }); } catch { /* order page will show the truth */ } resolve(false); });
     rz.open();
   });
 }

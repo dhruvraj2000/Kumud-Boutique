@@ -11,7 +11,8 @@ npm test           # 20 API checks (in-memory database)
 Requires Node 22.13+ (uses built-in `node:sqlite`). The database is created on first run in `data/kumud.db`.
 
 ## Accounts
-- Admin: `admin@kumudboutique.com` / `Admin@12345` — change via `ADMIN_EMAIL` / `ADMIN_PASSWORD` env vars before first run.
+- Admin (local development only): `admin@kumudboutique.com` / `Admin@12345`. In production set `ADMIN_EMAIL` / `ADMIN_PASSWORD` before first run (if unset, a random password is generated and printed once). Admins must enable 2-factor sign-in under **Admin → Security**.
+- Staff roles: add managers and delivery partners under Admin → Security → Team. See [docs/SECURITY.md](docs/SECURITY.md) for security, Google Maps, order tracking, backups and DDoS guidance.
 - Admin panel: `#/admin` (orders + status/tracking, stock & prices, enquiries).
 
 ## Coupons

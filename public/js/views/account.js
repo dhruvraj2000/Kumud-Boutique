@@ -6,9 +6,9 @@ import { measureFields, readMeasureForm, bindFigure } from '../measure.js';
 export default async function account({ el, params, onLeave }) {
   if (!state.user) return go('/login?next=/account');
   const tab = params[0] || 'profile', u = state.user;
-  const tabs = [['profile', 'Profile'], ['orders', 'Orders'], ['addresses', 'Addresses'], ['measurements', 'Measurements'], ['security', 'Password']];
+  const tabs = [['profile', 'Profile'], ['orders', 'Orders'], ['updates', 'Updates'], ['addresses', 'Addresses'], ['measurements', 'Measurements'], ['security', 'Password & privacy']];
   const shell = body => html`<section class="wrap page-head"><nav class="crumbs"><a href="#/">Home</a><span>/</span><span>Account</span></nav><h1>Hello, ${u.name.split(' ')[0]}</h1></section>
-    <div class="wrap acct"><nav class="acct-nav" aria-label="Account">${tabs.map(([k, l]) => html`<a href="#/account/${k}" class="${tab === k ? 'on' : ''}">${l}</a>`)}<a href="#/wishlist">Wishlist <small>${state.wish.size}</small></a>${u.role === 'admin' ? html`<a href="#/admin" class="admin-link">Admin panel</a>` : ''}<button class="link-btn" data-action="logout">Sign out</button></nav><div class="acct-body">${body}</div></div>`;
+    <div class="wrap acct"><nav class="acct-nav" aria-label="Account">${tabs.map(([k, l]) => html`<a href="#/account/${k}" class="${tab === k ? 'on' : ''}">${l}</a>`)}<a href="#/wishlist">Wishlist <small>${state.wish.size}</small></a>${u.role === 'admin' || u.role === 'manager' ? html`<a href="#/admin" class="admin-link">Admin panel</a>` : ''}${u.role === 'delivery' ? html`<a href="#/courier" class="admin-link">My deliveries</a>` : ''}<button class="link-btn" data-action="logout">Sign out</button></nav><div class="acct-body">${body}</div></div>`;
   actions.logout = async () => { await post('/auth/logout'); setUser(null); state.wish = new Set(); toast('Signed out'); go('/'); };
   onLeave(() => delete actions.logout);
 
@@ -51,12 +51,20 @@ export default async function account({ el, params, onLeave }) {
       <button class="btn btn-primary" type="submit">${m ? 'Update measurements' : 'Save measurements'}</button></form>`));
     bindFigure($('#mForm', el));
     onSubmit($('#mForm', el), async d => { await put('/account/measurements', readMeasureForm(d)); toast('Measurements saved ✦'); }, 'Saving…');
+  } else if (tab === 'updates') {
+    const { notifications, unread } = await get('/notifications');
+    render(el, shell(notifications.length ? html`<ul class="notes">${notifications.map(n => html`<li class="${n.read ? '' : 'unread'}"><a href="#/orders/${n.orderNumber}"><b>${n.title}</b><small>${n.body}</small><small>${new Date(n.ts).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></a></li>`)}</ul>` : html`<p class="muted">No updates yet. We will tell you here, and by email, whenever an order moves.</p>`));
+    if (unread) await post('/notifications/read');
   } else if (tab === 'security') {
     render(el, shell(html`<form id="pwForm" class="card-form narrow" novalidate><h3>Change password</h3>
       <div class="field"><label for="cp">Current password</label><input id="cp" name="currentPassword" type="password" autocomplete="current-password"></div>
       <div class="field"><label for="np">New password</label><input id="np" name="newPassword" type="password" autocomplete="new-password"><small class="hint">8+ characters with a letter and a number</small></div>
-      <button class="btn btn-primary" type="submit">Update password</button></form>`));
+      <button class="btn btn-primary" type="submit">Update password</button></form>
+      <div class="card-form narrow"><h3>Your data</h3><p class="muted">Download a copy of everything we hold about you, or delete your account. Past orders are kept for accounting, with your personal details removed. <a href="#/privacy">Privacy policy</a></p>
+        <p><a class="btn btn-ghost" href="/api/account/export">Download my data</a></p>
+        <form id="delForm" novalidate><div class="field"><label for="dp">Password</label><input id="dp" name="password" type="password" autocomplete="current-password"></div><button class="btn btn-ghost" type="submit">Delete my account</button></form></div>`));
     onSubmit($('#pwForm', el), async (d, f) => { await post('/account/password', d); f.reset(); toast('Password updated'); }, 'Updating…');
+    onSubmit($('#delForm', el), async d => { if (!confirm('Delete your account permanently? This cannot be undone.')) return; await post('/account/delete', { password: d.password }); setUser(null, ''); state.wish = new Set(); toast('Your account was deleted.'); go('/'); }, 'Deleting…');
   } else {
     render(el, shell(html`<form id="pfForm" class="card-form narrow" novalidate><h3>Your details</h3>
       <div class="field"><label for="pn">Full name</label><input id="pn" name="name" value="${u.name}" autocomplete="name"></div>

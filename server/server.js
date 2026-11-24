@@ -6,24 +6,26 @@ const { db, tx, hashPassword, COUPONS, LOOKS, getSetting, setSetting } = require
 const fest = require('./festival-data');
 const FP = require('./festival-pricing');
 const mysqlDb = require('./mysql');
+const SEC = require('./security');
+const secRoutes = require('./security-routes');
+const backup = require('./backup');
+const T = require('./tracking');
+const L = require('./lifecycle');
+const geo = require('./geo');
+const V = require('./visitors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const FREE_SHIP_MIN = 7500, SHIP_FEE = 199, MAX_QTY = 10;
-const STATUSES = ['placed', 'confirmed', 'preparing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'];
-const STATUS_NOTE = {
-  placed: 'Order received', confirmed: 'Order confirmed by the atelier', preparing: 'Being prepared & quality-checked',
-  shipped: 'Handed to courier', out_for_delivery: 'Out for delivery', delivered: 'Delivered', cancelled: 'Order cancelled'
-};
+const STATUS_NOTE = T.NOTE;
 
 app.disable('x-powered-by');
+if (process.env.TRUST_PROXY || process.env.RENDER || process.env.VERCEL) app.set('trust proxy', process.env.TRUST_PROXY === undefined ? 1 : (/^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY));
+app.use(SEC.headers());
+app.use(SEC.monitor);
+app.use('/api', SEC.guard);
 app.use(express.json({ limit: '100kb' }));
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  next();
-});
+app.use('/api', SEC.csrfGuard);
 
 /* ---------- helpers ---------- */
 class HttpError extends Error { constructor(status, message, field) { super(message); this.status = status; this.field = field; } }
@@ -34,26 +36,15 @@ const isEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
 const cleanPhone = v => { const d = String(v || '').replace(/[^\d]/g, ''); return d.length === 12 && d.startsWith('91') ? d.slice(2) : d; };
 const isPhone = v => /^[6-9]\d{9}$/.test(v);
 
-const cookies = req => Object.fromEntries((req.headers.cookie || '').split(';').map(c => c.trim().split('=')).filter(c => c[0]).map(([k, ...v]) => [k, decodeURIComponent(v.join('='))]));
-const setSession = (res, token, maxAge) => res.setHeader('Set-Cookie', `kb_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`);
-
-app.use((req, res, next) => {
-  const t = cookies(req).kb_session;
-  req.user = null;
-  if (t) {
-    const row = db.prepare('SELECT u.id,u.name,u.email,u.phone,u.role,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?').get(t);
-    if (row && row.expires_at > Date.now()) req.user = row; else if (row) db.prepare('DELETE FROM sessions WHERE token=?').run(t);
-  }
-  next();
-});
+app.use(SEC.loadSession);
 // state-changing requests must be JSON (blocks plain cross-site form posts)
 app.use('/api', (req, res, next) => {
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && Number(req.headers['content-length'] || 0) > 0 && !req.is('application/json')) return next(bad('JSON required'));
   next();
 });
 app.use('/api', fest.ensureFresh);
-const needUser = (req, res, next) => (req.user ? next() : next(new HttpError(401, 'Please sign in to continue.')));
-const needAdmin = (req, res, next) => (req.user && req.user.role === 'admin' ? next() : next(new HttpError(403, 'Admins only.')));
+const { needUser, needAdmin, needPerm } = SEC;
+app.use('/api', secRoutes.router);
 
 const hits = new Map();
 const limit = (name, max, windowMs) => (req, res, next) => {
@@ -64,7 +55,7 @@ const limit = (name, max, windowMs) => (req, res, next) => {
 };
 setInterval(() => hits.clear(), 10 * 60 * 1000).unref();
 
-const publicUser = u => u && ({ id: u.id, name: u.name, email: u.email, phone: u.phone, role: u.role });
+const publicUser = secRoutes.publicUser;
 
 /* ---------- catalog ---------- */
 const twinPct = () => Math.max(0, Math.min(50, Number(getSetting('twinningPercent')) || 0));
@@ -106,6 +97,8 @@ app.get('/api/meta', (req, res) => {
     collections: [...new Set(ps.map(p => p.collection))],
     colors: [...new Set(ps.flatMap(p => p.colors))],
     sizes: ['XS', 'S', 'M', 'L', 'XL'], kidsSizes: ['2Y', '4Y', '6Y', '8Y', '10Y', '12Y'],
+    mapsKey: process.env.GOOGLE_MAPS_API_KEY || '',   // browser key: restrict it by HTTP referrer in Google Cloud (see docs/SECURITY.md)
+    store: { name: geo.STORE.name, lat: geo.STORE.lat, lng: geo.STORE.lng }, zones: geo.ZONES.map(z => ({ key: z.key, label: z.label, maxKm: z.maxKm === Infinity ? null : z.maxKm, fee: z.fee })), returnDays: 7,
     whatsapp: getSetting('whatsapp'), twinningPercent: twinPct(), razorpayKeyId: rzpOn() ? rzp().id : '',
     priceMin: Math.min(...ps.map(p => p.price)), priceMax: Math.max(...ps.map(p => p.price)),
     freeShippingMin: FREE_SHIP_MIN, shippingFee: SHIP_FEE, maxQty: MAX_QTY,
@@ -166,39 +159,21 @@ app.post('/api/products/:slug/reviews', needUser, (req, res, next) => {
 });
 
 /* ---------- auth & account ---------- */
-function startSession(res, userId) {
-  const token = crypto.randomBytes(32).toString('hex'), maxAge = 30 * 86400;
-  db.prepare('INSERT INTO sessions(token,user_id,expires_at) VALUES(?,?,?)').run(token, userId, Date.now() + maxAge * 1000);
-  setSession(res, token, maxAge);
-}
 app.post('/api/auth/register', limit('reg', 10, 60000), (req, res, next) => {
   const name = str(req.body.name, 80), email = str(req.body.email, 120).toLowerCase(), phone = cleanPhone(req.body.phone), pw = String(req.body.password || '');
   if (name.length < 2) return next(bad('Please enter your full name.', 'name'));
   if (!isEmail(email)) return next(bad('Please enter a valid email address.', 'email'));
   if (phone && !isPhone(phone)) return next(bad('Enter a valid 10-digit mobile number.', 'phone'));
-  if (pw.length < 8 || !/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return next(bad('Password needs 8+ characters with a letter and a number.', 'password'));
+  { const pr = secRoutes.pwProblem(pw); if (pr) return next(bad(pr, 'password')); }
   if (db.prepare('SELECT 1 FROM users WHERE email=?').get(email)) return next(new HttpError(409, 'An account with this email already exists. Try signing in.', 'email'));
   const { salt, hash } = hashPassword(pw);
   const id = db.prepare('INSERT INTO users(name,email,phone,salt,hash) VALUES(?,?,?,?,?)').run(name, email, phone, salt, hash).lastInsertRowid;
-  // link earlier guest orders placed with this email
-  db.prepare('UPDATE orders SET user_id=? WHERE user_id IS NULL AND lower(email)=?').run(id, email);
-  startSession(res, id);
-  res.status(201).json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id=?').get(id)) });
+  // guest orders are NOT auto-linked by email: the address is unverified, so that would expose someone else's orders.
+  const row = db.prepare('SELECT * FROM users WHERE id=?').get(id);
+  SEC.logEvent('register', 'info', req, { userId: id, email });
+  const { csrf } = SEC.createSession(req, res, row, false);
+  res.status(201).json({ user: publicUser(row), csrf });
 });
-app.post('/api/auth/login', limit('login', 10, 60000), (req, res, next) => {
-  const email = str(req.body.email, 120).toLowerCase(), pw = String(req.body.password || '');
-  const u = db.prepare('SELECT * FROM users WHERE email=?').get(email);
-  const ok = u && crypto.timingSafeEqual(Buffer.from(hashPassword(pw, u.salt).hash), Buffer.from(u.hash));
-  if (!ok) return next(new HttpError(401, 'Incorrect email or password.'));
-  startSession(res, u.id);
-  res.json({ user: publicUser(u) });
-});
-app.post('/api/auth/logout', (req, res) => {
-  const t = cookies(req).kb_session; if (t) db.prepare('DELETE FROM sessions WHERE token=?').run(t);
-  setSession(res, '', 0); res.json({ ok: true });
-});
-app.get('/api/auth/me', (req, res) => res.json({ user: publicUser(req.user) }));
-
 app.patch('/api/account', needUser, (req, res, next) => {
   const name = str(req.body.name, 80), phone = cleanPhone(req.body.phone);
   if (name.length < 2) return next(bad('Please enter your full name.', 'name'));
@@ -209,10 +184,10 @@ app.patch('/api/account', needUser, (req, res, next) => {
 app.post('/api/account/password', needUser, limit('pw', 10, 60000), (req, res, next) => {
   const u = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id), pw = String(req.body.newPassword || '');
   if (!crypto.timingSafeEqual(Buffer.from(hashPassword(String(req.body.currentPassword || ''), u.salt).hash), Buffer.from(u.hash))) return next(bad('Current password is incorrect.', 'currentPassword'));
-  if (pw.length < 8 || !/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return next(bad('Password needs 8+ characters with a letter and a number.', 'newPassword'));
+  { const pr = secRoutes.pwProblem(pw, u.role); if (pr) return next(bad(pr, 'newPassword')); }
   const { salt, hash } = hashPassword(pw);
   db.prepare('UPDATE users SET salt=?, hash=? WHERE id=?').run(salt, hash, u.id);
-  const keep = cookies(req).kb_session; db.prepare('DELETE FROM sessions WHERE user_id=? AND token<>?').run(u.id, keep);
+  db.prepare('DELETE FROM sessions WHERE user_id=? AND token<>?').run(u.id, req.user.sid); SEC.logEvent('password_changed', 'info', req);
   res.json({ ok: true });
 });
 
@@ -227,13 +202,17 @@ function readAddress(b) {
   return a;
 }
 const addrCols = 'name,phone,line1,line2,city,state,pincode,label';
+// optional map pin saved with an address (validated: real coordinates inside India)
+const pinOf = b => { const l = readLoc(b, ''); return l && geo.validPoint(l) && geo.inIndia(l.lat, l.lng) ? l : null; };
+const savePin = (id, b) => { const l = pinOf(b); db.prepare('UPDATE addresses SET lat=?, lng=?, place_id=? WHERE id=?').run(l ? l.lat : null, l ? l.lng : null, l ? l.placeId : '', id); };
 app.get('/api/addresses', needUser, (req, res) => res.json({ addresses: db.prepare('SELECT * FROM addresses WHERE user_id=? ORDER BY is_default DESC,id').all(req.user.id) }));
 app.post('/api/addresses', needUser, (req, res) => {
   const a = readAddress(req.body), first = !db.prepare('SELECT 1 FROM addresses WHERE user_id=?').get(req.user.id);
   const def = first || req.body.isDefault ? 1 : 0;
   tx(() => {
     if (def) db.prepare('UPDATE addresses SET is_default=0 WHERE user_id=?').run(req.user.id);
-    db.prepare(`INSERT INTO addresses(user_id,${addrCols},is_default) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(req.user.id, a.name, a.phone, a.line1, a.line2, a.city, a.state, a.pincode, a.label, def);
+    const nid = db.prepare(`INSERT INTO addresses(user_id,${addrCols},is_default) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(req.user.id, a.name, a.phone, a.line1, a.line2, a.city, a.state, a.pincode, a.label, def).lastInsertRowid;
+    savePin(nid, req.body);
   });
   res.status(201).json({ addresses: db.prepare('SELECT * FROM addresses WHERE user_id=? ORDER BY is_default DESC,id').all(req.user.id) });
 });
@@ -244,6 +223,7 @@ app.put('/api/addresses/:id', needUser, (req, res, next) => {
   tx(() => {
     if (req.body.isDefault) { db.prepare('UPDATE addresses SET is_default=0 WHERE user_id=?').run(req.user.id); db.prepare('UPDATE addresses SET is_default=1 WHERE id=?').run(row.id); }
     db.prepare('UPDATE addresses SET name=?,phone=?,line1=?,line2=?,city=?,state=?,pincode=?,label=? WHERE id=?').run(a.name, a.phone, a.line1, a.line2, a.city, a.state, a.pincode, a.label, row.id);
+    if (req.body.location !== undefined) savePin(row.id, req.body);
   });
   res.json({ addresses: db.prepare('SELECT * FROM addresses WHERE user_id=? ORDER BY is_default DESC,id').all(req.user.id) });
 });
@@ -350,8 +330,31 @@ function quote(rawItems, couponCode) {
   return { lines, warnings, subtotal, shipping, discount, coupon, couponMessage, twinning, twinPairs: pairs, twinPercent: pct, festivalSavings, originalSubtotal: original, discountLimited: g.limited,
     total: Math.max(0, subtotal - discount - twinning + shipping), freeShippingMin: FREE_SHIP_MIN };
 }
-app.post('/api/cart/quote', (req, res, next) => {
-  try { res.json(req.body.items && req.body.items.length ? quote(req.body.items, req.body.coupon) : { lines: [], warnings: [], subtotal: 0, shipping: 0, discount: 0, coupon: null, couponMessage: '', twinning: 0, twinPairs: 0, total: 0, freeShippingMin: FREE_SHIP_MIN }); } catch (e) { next(e); }
+// GST already inside the prices: per item 5% up to the threshold, 18% above it (settings); delivery at 18%. Shown on the bill and invoice, never added on top.
+function taxIncluded(lines, subtotal, off, shipping) {
+  const lo = Number(getSetting('gstLowPercent')) || 0, hi = Number(getSetting('gstHighPercent')) || 0, cut = Number(getSetting('gstThreshold')) || 0;
+  const keep = subtotal > 0 ? Math.max(0, subtotal - off) / subtotal : 1;
+  let tax = 0;
+  for (const l of lines) { const r = l.price <= cut ? lo : hi; tax += l.lineTotal * keep * r / (100 + r); }
+  return Math.round(tax + (shipping ? shipping * hi / (100 + hi) : 0));
+}
+// Replaces the flat delivery fee with the zone fee for a confirmed map pin (free-shipping rules still win).
+function applyDelivery(q, a) {
+  if (!a || !a.ok) return q;
+  if (q.shipping > 0) q.shipping = a.baseFee;
+  q.total = Math.max(0, q.subtotal - q.discount - q.twinning + q.shipping); q.taxIncluded = taxIncluded(q.lines, q.subtotal, q.discount + q.twinning, q.shipping);
+  q.delivery = { km: a.km, zone: a.zone, zoneLabel: a.zoneLabel, fee: q.shipping, etaDays: a.etaDays, source: a.source };
+  return q;
+}
+const readLoc = (b, pin) => { const l = b && b.location; return l && typeof l === 'object' ? { lat: Number(l.lat), lng: Number(l.lng), placeId: str(l.placeId, 200), pincode: pin } : null; };
+app.post('/api/cart/quote', limit('quote', 120, 60000), async (req, res, next) => {
+  try {
+    if (!(req.body.items && req.body.items.length)) return res.json({ lines: [], warnings: [], subtotal: 0, shipping: 0, discount: 0, coupon: null, couponMessage: '', twinning: 0, twinPairs: 0, total: 0, freeShippingMin: FREE_SHIP_MIN });
+    const q = quote(req.body.items, req.body.coupon), loc = readLoc(req.body, str(req.body.pincode, 6));
+    q.taxIncluded = taxIncluded(q.lines, q.subtotal, q.discount + q.twinning, q.shipping);
+    if (loc) { const a = await geo.assess(loc, loc.pincode, q.subtotal, FREE_SHIP_MIN); if (!a.ok) q.deliveryError = a.reason; applyDelivery(q, a); }
+    res.json(q);
+  } catch (e) { next(e); }
 });
 
 /* ---------- orders ---------- */
@@ -390,9 +393,11 @@ function loadOrder(number) {
   const o = db.prepare('SELECT * FROM orders WHERE number=?').get(number);
   if (!o) return null;
   return {
-    number: o.number, status: o.status, paymentMethod: o.payment_method, paymentStatus: o.payment_status, onlinePending: o.payment_method.startsWith('Razorpay') && o.payment_status === 'pending' && o.status !== 'cancelled', subtotal: o.subtotal, shipping: o.shipping,
+    number: o.number, status: o.status, paymentMethod: o.payment_method, paymentStatus: o.payment_status, onlinePending: o.payment_method.startsWith('Razorpay') && o.payment_status === 'pending' && ['placed', 'payment_processing', 'payment_failed'].includes(o.status), subtotal: o.subtotal, shipping: o.shipping,
+    steps: L.stepsFor(o), trackingUrl: T.trackingUrl(o), canCancel: L.CUSTOMER_CANCEL.includes(o.status), taxIncluded: o.tax || 0,
     discount: o.discount, total: o.total, coupon: o.coupon, address: JSON.parse(o.address), email: o.email, phone: o.phone, notes: o.notes,
-    carrier: o.carrier, trackingNo: o.tracking_no, createdAt: o.created_at, userId: o.user_id,
+    carrier: o.carrier, trackingNo: o.tracking_no, createdAt: o.created_at, userId: o.user_id, trackingId: o.tracking_id, eta: o.eta, deliveredAt: o.delivered_at, statusLabel: T.LABEL[o.status],
+    canReturn: o.status === 'delivered' && !!o.delivered_at && (Date.now() - Date.parse(o.delivered_at.replace(' ', 'T') + 'Z')) < 7 * 86400000, distanceKm: o.distance_km,
     measurements: o.measurements ? JSON.parse(o.measurements) : null,
     items: db.prepare('SELECT product_id productId,name,image,size,qty,price FROM order_items WHERE order_id=?').all(o.id),
     events: db.prepare('SELECT status,note,created_at createdAt FROM order_events WHERE order_id=? ORDER BY id').all(o.id)
@@ -400,10 +405,17 @@ function loadOrder(number) {
 }
 const outOrder = o => { const { userId, ...rest } = o; return rest; };
 
-app.post('/api/orders', limit('order', 20, 60000), (req, res, next) => {
+app.post('/api/orders', limit('order', Number(process.env.ORDER_RATE_PER_MIN || 20), 60000), wrap(async (req, res, next) => {
   const email = str(req.body.email || (req.user && req.user.email), 120).toLowerCase();
   if (!isEmail(email)) return next(bad('Enter a valid email so we can send your confirmation.', 'email'));
   const address = readAddress(req.body.address || {}), payment = readPayment(req.body.payment || {}), notes = str(req.body.notes, 300);
+  // idempotency: the browser sends one key per checkout attempt; a double-click, retry or refresh returns the SAME order instead of creating another
+  const idem = str(req.body.idempotencyKey, 64).replace(/[^\w-]/g, ''), existing = idem && db.prepare('SELECT number,user_id,email FROM orders WHERE idempotency_key=?').get(idem);
+  if (existing) { if (!canView(req, { userId: existing.user_id, email: existing.email }) && existing.email !== email) return next(new HttpError(409, 'That request was already used.')); return res.status(200).json({ order: outOrder(loadOrder(existing.number)), duplicate: true }); }
+  const loc = readLoc(req.body, address.pincode); let assess = null;
+  if (loc) { try { assess = await geo.assess(loc, address.pincode, 0, FREE_SHIP_MIN); } catch (e) { return next(e); } if (!assess.ok) return next(bad(assess.reason, 'location')); }
+  else if (getSetting('requirePin') === '1') return next(bad('Please confirm your delivery location on the map.', 'location'));
+  else if (geo.blockedPin(address.pincode)) return next(bad(`We cannot deliver to PIN ${address.pincode} right now.`, 'pincode'));
   let measurements = null;
   if (req.body.fit === 'saved' && req.user) {
     const r = db.prepare('SELECT data FROM measurements WHERE user_id=?').get(req.user.id);
@@ -418,11 +430,13 @@ app.post('/api/orders', limit('order', 20, 60000), (req, res, next) => {
     order = tx(() => {
       const q = quote(req.body.items, req.body.coupon);
       if (q.warnings.length) throw new HttpError(409, q.warnings.map(w => w.message).join(' ') + ' Please review your bag.');
+      if (assess) applyDelivery(q, { ...assess, fee: q.subtotal >= FREE_SHIP_MIN ? 0 : assess.baseFee });
       const number = orderNumber();
-      const id = db.prepare(`INSERT INTO orders(number,user_id,email,phone,status,payment_method,payment_status,subtotal,shipping,discount,total,coupon,address,notes,measurements)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(number, req.user ? req.user.id : null, email, address.phone, 'placed', payment.ref, payment.status,
+      const eta = geo.addDays(assess ? assess.etaDays + 2 : 7), tax = taxIncluded(q.lines, q.subtotal, q.discount + q.twinning, q.shipping), paidNow = payment.status === 'paid';
+      const id = db.prepare(`INSERT INTO orders(number,user_id,email,phone,status,payment_method,payment_status,subtotal,shipping,discount,total,coupon,address,notes,measurements,tracking_id,eta,dest_lat,dest_lng,place_id,distance_km,tax,idempotency_key)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(number, req.user ? req.user.id : null, email, address.phone, paidNow ? 'payment_confirmed' : 'placed', payment.ref, payment.status,
         q.subtotal, q.shipping, q.discount + q.twinning, q.total, q.coupon || (q.twinning ? 'TWINNING' : null), JSON.stringify(address), notes,
-        measurements ? JSON.stringify(measurements) : '').lastInsertRowid;
+        measurements ? JSON.stringify(measurements) : '', T.newTrackingId(), eta, loc ? loc.lat : null, loc ? loc.lng : null, loc ? loc.placeId : '', assess ? assess.km : null, tax, idem || '').lastInsertRowid;
       const insItem = db.prepare('INSERT INTO order_items(order_id,product_id,name,image,size,qty,price) VALUES(?,?,?,?,?,?,?)');
       for (const l of q.lines) {
         const row = db.prepare('SELECT stock FROM products WHERE id=?').get(l.id), st = JSON.parse(row.stock);
@@ -430,15 +444,21 @@ app.post('/api/orders', limit('order', 20, 60000), (req, res, next) => {
         st[l.size] -= l.qty; db.prepare('UPDATE products SET stock=? WHERE id=?').run(JSON.stringify(st), l.id);
         insItem.run(id, l.id, l.name, l.image, l.size, l.qty, l.price);
       }
-      db.prepare('INSERT INTO order_events(order_id,status,note) VALUES(?,?,?)').run(id, 'placed', STATUS_NOTE.placed + (payment.status === 'paid' ? ' · payment received' : ' · pay on delivery'));
+      const ev = db.prepare('INSERT INTO order_events(order_id,status,note) VALUES(?,?,?)');
+      ev.run(id, 'placed', STATUS_NOTE.placed + (payment.method === 'cod' ? ' · pay on delivery' : payment.method === 'razorpay' ? ' · awaiting online payment' : ''));
+      if (paidNow) { ev.run(id, 'payment_processing', STATUS_NOTE.payment_processing); ev.run(id, 'payment_confirmed', STATUS_NOTE.payment_confirmed); T.recordPayment(id, { provider: payment.method, ref: 'SIM-' + crypto.randomBytes(6).toString('hex'), amount: q.total, status: 'succeeded', note: 'simulated (demo) payment' }); }
       if (req.user && !db.prepare('SELECT 1 FROM addresses WHERE user_id=?').get(req.user.id) && req.body.saveAddress !== false)
-        db.prepare(`INSERT INTO addresses(user_id,${addrCols},is_default) VALUES(?,?,?,?,?,?,?,?,?,1)`).run(req.user.id, address.name, address.phone, address.line1, address.line2, address.city, address.state, address.pincode, address.label);
+        savePin(db.prepare(`INSERT INTO addresses(user_id,${addrCols},is_default) VALUES(?,?,?,?,?,?,?,?,?,1)`).run(req.user.id, address.name, address.phone, address.line1, address.line2, address.city, address.state, address.pincode, address.label).lastInsertRowid, req.body);
       return number;
     });
-  } catch (e) { return next(e); }
+  } catch (e) {
+    if (/UNIQUE.*idempotency|idx_orders_idem/i.test(String(e.message)) && idem) { const x = db.prepare('SELECT number FROM orders WHERE idempotency_key=?').get(idem); if (x) return res.status(200).json({ order: outOrder(loadOrder(x.number)), duplicate: true }); }
+    return next(e);
+  }
+  T.onPlaced(order);
   if (req.body.coupon && fest.current().coupons) { const used = str(req.body.coupon, 20).toUpperCase(); if (findCoupon(used) || fest.current().coupons[used]) mysqlDb.query('UPDATE coupons SET used_count=used_count+1 WHERE code=?', [used]).catch(() => {}); }
   res.status(201).json({ order: outOrder(loadOrder(order)) });
-});
+}));
 
 app.get('/api/orders', needUser, (req, res) => {
   const nums = db.prepare('SELECT number FROM orders WHERE user_id=? ORDER BY id DESC').all(req.user.id);
@@ -460,7 +480,7 @@ app.post('/api/orders/:number/pay', limit('pay', 20, 60000), async (req, res, ne
     const row = db.prepare('SELECT * FROM orders WHERE number=?').get(str(req.params.number, 30).toUpperCase());
     if (!row || !canView(req, loadOrder(row.number))) return next(new HttpError(404, 'Order not found.'));
     if (!rzpOn()) return next(bad('Online payment is not available right now.'));
-    if (row.payment_status !== 'pending' || row.status === 'cancelled' || !row.payment_method.startsWith('Razorpay')) return next(bad('This order does not need payment.'));
+    if (row.payment_status !== 'pending' || !['placed', 'payment_processing', 'payment_failed'].includes(row.status) || !row.payment_method.startsWith('Razorpay')) return next(bad('This order does not need payment.'));
     const k = rzp();
     if (!row.rzp_order_id) {
       const r = await fetch('https://api.razorpay.com/v1/orders', {
@@ -470,7 +490,9 @@ app.post('/api/orders/:number/pay', limit('pay', 20, 60000), async (req, res, ne
       const j = await r.json();
       if (!r.ok || !j.id) return next(new HttpError(502, 'Could not start the payment. Please try again.'));
       db.prepare('UPDATE orders SET rzp_order_id=? WHERE id=?').run(j.id, row.id); row.rzp_order_id = j.id;
+      T.recordPayment(row.id, { provider: 'razorpay', ref: j.id, amount: row.total, status: 'created', note: 'gateway order created' });
     }
+    if (row.status !== 'payment_processing') T.setStatus(T.row(row.number), 'payment_processing', { system: true, notify: false, note: 'Waiting for your payment' });
     res.json({ keyId: k.id, orderId: row.rzp_order_id, amount: row.total * 100, number: row.number, email: row.email, phone: row.phone });
   } catch (e) { next(e); }
 });
@@ -482,10 +504,33 @@ app.post('/api/orders/:number/verify', limit('verify', 20, 60000), (req, res, ne
   const want = crypto.createHmac('sha256', rzp().secret).update(row.rzp_order_id + '|' + payId).digest('hex');
   const ok = sig.length === want.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want));
   if (!ok) return next(bad('We could not verify that payment.'));
-  if (row.payment_status === 'pending') tx(() => {
-    db.prepare("UPDATE orders SET payment_status='paid', payment_method=? WHERE id=?").run('Razorpay ' + payId, row.id);
-    db.prepare('INSERT INTO order_events(order_id,status,note) VALUES(?,?,?)').run(row.id, row.status, 'Payment received');
-  });
+  if (!/^pay_[A-Za-z0-9]+$/.test(payId)) return next(bad('We could not verify that payment.'));
+  // 'cancelled' payment_status = an unpaid order we gave up on (timeout). A valid payment can still arrive for it: record it, never ignore it.
+  if (row.payment_status === 'pending' || (row.status === 'cancelled' && row.payment_status === 'cancelled')) {
+    try {
+      tx(() => {
+        if (!T.recordPayment(row.id, { provider: 'razorpay', ref: payId, amount: row.total, status: 'succeeded', note: 'signature verified' })) throw new HttpError(409, 'This payment has already been used.');   // one gateway payment can never settle two orders
+        db.prepare('UPDATE orders SET payment_method=? WHERE id=?').run('Razorpay ' + payId, row.id);
+      });
+    } catch (e) { return next(e); }
+    const fresh = T.row(row.number);
+    if (fresh.status === 'cancelled') {   // paid after we gave up on it: keep the money visible and flag the refund
+      db.prepare("UPDATE orders SET payment_status='refund due' WHERE id=?").run(row.id);
+      db.prepare('INSERT INTO order_events(order_id,status,note) VALUES(?,?,?)').run(row.id, 'cancelled', 'Payment arrived after the order was cancelled — refund due');
+      require('./notify').alertAdmin('high', 'Payment received for a cancelled order ' + row.number, 'Refund it from Admin → Orders → Refunds.');
+    } else T.setStatus(fresh, 'payment_confirmed', { system: true, note: 'Payment received · ' + payId });
+  }
+  res.json({ order: outOrder(loadOrder(row.number)) });
+});
+// The gateway window reported a failed/closed payment. Safe to accept from the customer: it can only move their own unpaid order to "payment failed" (retry stays possible).
+app.post('/api/orders/:number/payment-failed', limit('payfail', 20, 60000), (req, res, next) => {
+  const row = db.prepare('SELECT * FROM orders WHERE number=?').get(str(req.params.number, 30).toUpperCase());
+  if (!row || !canView(req, loadOrder(row.number))) return next(new HttpError(404, 'Order not found.'));
+  if (row.payment_status !== 'pending' || !row.payment_method.startsWith('Razorpay') || !['placed', 'payment_processing'].includes(row.status)) return next(bad('This order is not waiting for a payment.'));
+  const why = str(req.body.reason, 100) || 'Payment was not completed';
+  T.recordPayment(row.id, { provider: 'razorpay', ref: null, amount: row.total, status: 'failed', note: why });
+  T.setStatus(T.row(row.number), 'payment_failed', { system: true, note: 'Payment failed: ' + why });
+  SEC.logEvent('payment_failed', 'info', req, { detail: row.number + ' ' + why });
   res.json({ order: outOrder(loadOrder(row.number)) });
 });
 app.get('/api/track', limit('track', 20, 60000), (req, res, next) => {
@@ -493,24 +538,11 @@ app.get('/api/track', limit('track', 20, 60000), (req, res, next) => {
   if (!o || o.email.toLowerCase() !== str(req.query.email, 120).toLowerCase()) return next(new HttpError(404, 'We could not find that order. Check the order number and email.'));
   res.json({ order: outOrder(o) });
 });
-function restock(orderRow) {
-  const items = db.prepare('SELECT product_id,size,qty FROM order_items WHERE order_id=?').all(orderRow.id);
-  for (const it of items) {
-    const row = db.prepare('SELECT stock FROM products WHERE id=?').get(it.product_id); if (!row) continue;
-    const st = JSON.parse(row.stock); st[it.size] = (st[it.size] || 0) + it.qty;
-    db.prepare('UPDATE products SET stock=? WHERE id=?').run(JSON.stringify(st), it.product_id);
-  }
-}
 app.post('/api/orders/:number/cancel', (req, res, next) => {
   const o = loadOrder(str(req.params.number, 30).toUpperCase());
   if (!canView(req, o)) return next(new HttpError(404, 'Order not found.'));
-  if (!['placed', 'confirmed'].includes(o.status)) return next(bad('This order has already moved to preparation and can no longer be cancelled online. Please contact us.'));
-  tx(() => {
-    const row = db.prepare('SELECT * FROM orders WHERE number=?').get(o.number);
-    db.prepare("UPDATE orders SET status='cancelled', payment_status=CASE WHEN payment_status='paid' THEN 'refund due' ELSE 'cancelled' END WHERE id=?").run(row.id);
-    db.prepare('INSERT INTO order_events(order_id,status,note) VALUES(?,?,?)').run(row.id, 'cancelled', 'Cancelled by customer');
-    restock(row);
-  });
+  if (!L.CUSTOMER_CANCEL.includes(o.status)) return next(bad('This order has already moved to preparation and can no longer be cancelled online. Please contact us.'));
+  try { T.setStatus(T.row(o.number), 'cancelled', { note: 'Cancelled by customer', reason: str(req.body.reason, 200) }); } catch (e) { return next(e); }
   res.json({ order: outOrder(loadOrder(o.number)) });
 });
 
@@ -521,7 +553,9 @@ app.post('/api/inquiries', limit('inq', 6, 60000), (req, res, next) => {
   if (!isEmail(email)) return next(bad('Please enter a valid email.', 'email'));
   if (phone && !isPhone(phone)) return next(bad('Enter a valid 10-digit mobile number.', 'phone'));
   if (message.length < 10) return next(bad('Tell us a little more (10+ characters).', 'message'));
-  db.prepare('INSERT INTO inquiries(name,email,phone,topic,preferred_date,message) VALUES(?,?,?,?,?,?)').run(name, email.toLowerCase(), phone, str(req.body.topic, 60), str(req.body.preferredDate, 20), message);
+  const vid = String(req.headers['x-visitor-id'] || ''), topic = str(req.body.topic, 60);
+  const r = db.prepare('INSERT INTO inquiries(name,email,phone,topic,preferred_date,message,visitor_id) VALUES(?,?,?,?,?,?,?)').run(name, email.toLowerCase(), phone, topic, str(req.body.preferredDate, 20), message, V.VID.test(vid) ? vid : '');
+  try { V.notifyEnquiry({ id: Number(r.lastInsertRowid), name, email, phone, topic, message }); } catch (e) { console.error('enquiry notify', e.message); }
   res.status(201).json({ ok: true });
 });
 app.post('/api/newsletter', limit('news', 6, 60000), (req, res, next) => {
@@ -532,35 +566,19 @@ app.post('/api/newsletter', limit('news', 6, 60000), (req, res, next) => {
 });
 
 /* ---------- admin ---------- */
-app.get('/api/admin/stats', needAdmin, (req, res) => {
+app.get('/api/admin/stats', needPerm('analytics'), (req, res) => {
   const one = sql => db.prepare(sql).get();
   res.json({
-    revenue: one("SELECT COALESCE(SUM(total),0) v FROM orders WHERE status<>'cancelled'").v,
-    orders: one('SELECT COUNT(*) v FROM orders').v, open: one("SELECT COUNT(*) v FROM orders WHERE status NOT IN ('delivered','cancelled')").v,
-    customers: one("SELECT COUNT(*) v FROM users WHERE role='customer'").v, inquiries: one('SELECT COUNT(*) v FROM inquiries').v,
+    revenue: one("SELECT COALESCE(SUM(total),0) v FROM orders WHERE status NOT IN ('cancelled','returned','refund_processing','refunded','payment_failed','return_approved')").v,
+    orders: one('SELECT COUNT(*) v FROM orders').v, open: one("SELECT COUNT(*) v FROM orders WHERE status NOT IN ('delivered','cancelled','returned','return_requested','return_approved','refund_processing','refunded','payment_failed')").v,
+    customers: one("SELECT COUNT(*) v FROM users WHERE role='customer'").v, inquiries: one('SELECT COUNT(*) v FROM inquiries').v, newInquiries: one("SELECT COUNT(*) v FROM inquiries WHERE status='new'").v,
     lowStock: allProducts().filter(p => p.lowStock || !p.inStock).map(p => ({ id: p.id, name: p.name, stock: p.stock }))
   });
 });
-app.get('/api/admin/orders', needAdmin, (req, res) => {
-  res.json({ orders: db.prepare('SELECT number FROM orders ORDER BY id DESC LIMIT 200').all().map(n => outOrder(loadOrder(n.number))) });
-});
-app.patch('/api/admin/orders/:number', needAdmin, (req, res, next) => {
-  const row = db.prepare('SELECT * FROM orders WHERE number=?').get(req.params.number);
-  if (!row) return next(new HttpError(404, 'Order not found'));
-  const status = str(req.body.status, 20);
-  if (!STATUSES.includes(status)) return next(bad('Unknown status.'));
-  if (row.status === 'cancelled' || row.status === 'delivered') return next(bad(`A ${row.status} order cannot be changed.`));
-  const carrier = str(req.body.carrier, 40) || row.carrier, trackingNo = str(req.body.trackingNo, 40) || row.tracking_no;
-  tx(() => {
-    const paid = status === 'delivered' && row.payment_status === 'pending' ? 'paid' : row.payment_status;
-    db.prepare('UPDATE orders SET status=?, carrier=?, tracking_no=?, payment_status=? WHERE id=?').run(status, carrier, trackingNo, status === 'cancelled' && paid === 'paid' ? 'refund due' : paid, row.id);
-    db.prepare('INSERT INTO order_events(order_id,status,note) VALUES(?,?,?)').run(row.id, status, str(req.body.note, 200) || STATUS_NOTE[status]);
-    if (status === 'cancelled') restock(row);
-  });
-  res.json({ order: outOrder(loadOrder(row.number)) });
-});
-app.get('/api/admin/products', needAdmin, (req, res) => res.json({ products: db.prepare('SELECT * FROM products ORDER BY sort,id').all().map(shapeProduct) }));
-app.patch('/api/admin/products/:id', needAdmin, (req, res, next) => {
+// order management, tracking, courier GPS, returns, invoices, analytics: see tracking.js
+app.use('/api', T.build({ canView }));
+app.get('/api/admin/products', needPerm('products'), (req, res) => res.json({ products: db.prepare('SELECT * FROM products ORDER BY sort,id').all().map(shapeProduct) }));
+app.patch('/api/admin/products/:id', needPerm('products'), (req, res, next) => {
   const row = db.prepare('SELECT * FROM products WHERE id=?').get(req.params.id);
   if (!row) return next(new HttpError(404, 'Product not found'));
   const price = req.body.price === undefined ? row.price : Math.round(Number(req.body.price));
@@ -591,7 +609,7 @@ app.get('/api/admin/launch', needAdmin, (req, res) => {
   ].map(([label, done, hint]) => ({ label, done, hint }));
   res.json({ items });
 });
-app.get('/api/admin/inquiries', needAdmin, (req, res) => res.json({ inquiries: db.prepare('SELECT * FROM inquiries ORDER BY id DESC LIMIT 100').all() }));
+app.use('/api', V.router);   // visitor beacon, traffic + visitors + enquiries admin API
 
 /* ---------- bookings (MySQL) + admin portal ---------- */
 app.use('/api', require('./booking-routes'));
@@ -613,9 +631,10 @@ app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') err = bad('Invalid request.');
   const status = err.status || 500;
   if (status >= 500) console.error(err);
-  res.status(status).json({ error: status >= 500 && status !== 503 ? 'Something went wrong. Please try again.' : err.message, field: err.field });
+  res.locals.errMsg = status >= 500 ? String(err.message || err).slice(0, 200) : '';
+  res.status(status).json({ error: status >= 500 && status !== 503 ? 'Something went wrong. Please try again.' : err.message, field: err.field, code: err.code });
 });
 
-if (require.main === module) fest.refresh();
+if (require.main === module) { fest.refresh(); backup.start(); }
 if (require.main === module) app.listen(PORT, () => console.log(`Kumud Boutique running → http://localhost:${PORT}`));
 module.exports = app;

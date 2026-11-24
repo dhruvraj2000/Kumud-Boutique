@@ -4,6 +4,7 @@ import { go } from '../app.js';
 import { getCoupon, setCoupon, summary, couponBox } from './cart.js';
 import { measureFields, readMeasureForm, bindFigure } from '../measure.js';
 import { measureList } from './order.js';
+import { mapsOn, pinPicker, fallbackPicker, reportClient } from '../maps.js';
 
 const STATES = ['Andhra Pradesh', 'Assam', 'Bihar', 'Chandigarh', 'Chhattisgarh', 'Delhi', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jammu & Kashmir', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Odisha', 'Punjab', 'Rajasthan', 'Tamil Nadu', 'Telangana', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Other'];
 
@@ -11,7 +12,9 @@ export default async function checkout({ el, onLeave }) {
   if (!state.cart.length) { render(el, html`<section class="wrap page-narrow empty"><h1>Your bag is empty</h1><p>Add a piece before checking out.</p><a class="btn btn-primary" href="#/shop">Shop now</a></section>`); return 'Checkout'; }
   let q = await quote(getCoupon());
   if (applyQuoteToCart(q)) { q.warnings.forEach(w => toast(w.message, 'warn')); if (!state.cart.length) return go('/cart'); q = await quote(getCoupon()); }
-  let addresses = [], pay = 'cod', chosen = 'new', fit = 'standard', saved = null;
+  // one key per checkout attempt (kept across refreshes) so a double-click or retry can never create two orders
+  const idemKey = (() => { try { let k = sessionStorage.getItem('kb_idem'); if (!k) { k = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)); sessionStorage.setItem('kb_idem', k); } return k; } catch { return ''; } })();
+  let addresses = [], pay = 'cod', chosen = 'new', fit = 'standard', saved = null, loc = null;
   if (state.user) {
     try { addresses = (await get('/addresses')).addresses; if (addresses.length) chosen = String(addresses[0].id); } catch { /* ignore */ }
     try { saved = (await get('/account/measurements')).measurements; if (saved) fit = 'saved'; } catch { /* ignore */ }
@@ -37,7 +40,8 @@ export default async function checkout({ el, onLeave }) {
           <div class="three"><div class="field"><label for="ac">City</label><input id="ac" name="city" autocomplete="address-level2"></div>
           <div class="field"><label for="as">State</label><select id="as" name="state" autocomplete="address-level1"><option value="">Select state</option>${STATES.map(s => html`<option>${s}</option>`)}</select></div>
           <div class="field"><label for="az">PIN code</label><input id="az" name="pincode" inputmode="numeric" maxlength="6" autocomplete="postal-code"></div></div>
-        </div></section>
+        </div>
+        ${html`<div class="map-card"><h3>Pin your delivery location <small>helps us price delivery and reach you faster</small></h3><div id="mapHost" class="map-host"><p class="muted">Loading map…</p></div><p class="delivery-note" id="delNote" aria-live="polite"></p></div>`}</section>
 
       <section class="co-card"><h2><i>3</i> Fit <small>made to measure, free</small></h2>
         <div class="fit-pick" role="radiogroup" aria-label="Fit">${[['standard', 'Standard size', 'Use the sizes in your bag'], ...(saved ? [['saved', 'My saved measurements', 'From your account']] : []), ['custom', 'Enter measurements', 'We tailor to you']].map(([k, l, sub]) => html`<label class="fit-opt"><input type="radio" name="fit" value="${k}" ${fit === k ? 'checked' : ''}><span><b>${l}</b><small>${sub}</small></span></label>`)}</div>
@@ -63,16 +67,48 @@ export default async function checkout({ el, onLeave }) {
 
     <aside class="summary sticky"><h2>Your order</h2>
       <ul class="mini">${q.lines.map(l => html`<li><span class="mi"><img src="${thumb(l.image)}" alt="" width="64" height="80"><em>${l.qty}</em></span><div><b>${l.name}</b><small>Size ${l.size}</small></div><span>${money(l.lineTotal)}</span></li>`)}</ul>
-      <div id="coCoupon">${couponBox(q, getCoupon())}</div>${summary(q, { editable: false })}
+      <div id="coCoupon">${couponBox(q, getCoupon())}</div><div id="coSum">${summary(q, { editable: false })}</div>
       <button class="btn btn-primary btn-block" type="submit" id="placeBtn">Place order · ${money(q.total)}</button>
       <p class="secure">${icon('lock')} Your details are sent over a secure connection.</p></aside>
   </form>`);
 
+  // delivery pin: re-price the bag for the chosen location and show distance / fee / ETA (or why it is not serviceable)
+  const refreshDelivery = async () => {
+    const pin = chosen === 'new' ? ($('#az', el) ? $('#az', el).value : '') : ((addresses.find(x => String(x.id) === chosen) || {}).pincode || '');
+    q = await quote(getCoupon(), loc, pin);
+    render($('#coSum', el), summary(q, { editable: false }));
+    const btn = $('#placeBtn', el); btn.textContent = 'Place order · ' + money(q.total); btn.disabled = !!q.deliveryError;
+    const note = $('#delNote', el); if (!note) return;
+    note.textContent = q.deliveryError ? q.deliveryError : q.delivery ? q.delivery.zoneLabel + ' · about ' + Math.round(q.delivery.km) + ' km · delivery ' + (q.delivery.fee ? money(q.delivery.fee) : 'free') + ' · usually arrives in ' + (q.delivery.etaDays + 1) + '–' + (q.delivery.etaDays + 3) + ' days' : '';
+    note.classList.toggle('err', !!q.deliveryError);
+  };
+  const mapInit = async form => {
+    const host = $('#mapHost', el); if (!host) return;
+    const a = chosen !== 'new' ? addresses.find(x => String(x.id) === chosen) : null;
+    const picked = async p => {
+      loc = { lat: p.lat, lng: p.lng, placeId: p.placeId || '' };
+      if (chosen === 'new' && p.address) {
+        const set = (n, v) => { const i = form.elements[n]; if (i && v) i.value = v; };
+        set('line1', p.address.line1); set('city', p.address.city); set('pincode', p.address.pincode);
+        const s = form.elements.state; if (s && p.address.state) [...s.options].forEach(o => { if (o.value && p.address.state.toLowerCase().slice(0, 6) === o.value.toLowerCase().slice(0, 6)) s.value = o.value; });
+      }
+      await refreshDelivery();
+    };
+    // Google Maps when configured and healthy; otherwise a working fallback (device GPS + OpenStreetMap) — never a blank or broken map
+    if (!mapsOn()) fallbackPicker(host, { onPick: picked });
+    else {
+      try { await pinPicker(host, { initial: a && a.lat != null ? { lat: a.lat, lng: a.lng } : null, onPick: picked }); }
+      catch (e) { reportClient('maps', 'checkout picker failed: ' + (e.message || e)); fallbackPicker(host, { onPick: picked, why: 'Google Maps could not load, so search is unavailable. You can still use your current location, or just type your address.' }); }
+      window.addEventListener('kb:mapsfail', () => fallbackPicker(host, { onPick: picked, why: 'Google Maps rejected its key, so search is unavailable. You can still use your current location, or just type your address.' }), { once: true });
+    }
+    if (a && a.lat != null) { loc = { lat: a.lat, lng: a.lng, placeId: a.place_id || '' }; await refreshDelivery(); }
+  };
   const bind = () => {
     const form = $('#coForm', el);
     bindFigure(form);
+    mapInit(form);
     $$('input[name=fit]', form).forEach(r => r.addEventListener('change', () => { fit = r.value; $$('.fit-panel', form).forEach(p => { p.hidden = p.dataset.f !== fit; }); $$('.fit-panel[data-f=custom] input[required]', form).forEach(i => { i.required = fit === 'custom'; }); }));
-    $$('input[name=addrPick]', form).forEach(r => r.addEventListener('change', () => { chosen = r.value; $('#addrFields', el).hidden = chosen !== 'new'; }));
+    $$('input[name=addrPick]', form).forEach(r => r.addEventListener('change', () => { chosen = r.value; $('#addrFields', el).hidden = chosen !== 'new'; loc = null; mapInit($('#coForm', el)); }));
     $('#cn', form).addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 19).replace(/(.{4})/g, '$1 ').trim(); });
     $('#cx', form).addEventListener('input', e => { let v = e.target.value.replace(/\D/g, '').slice(0, 4); if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2); e.target.value = v; });
     const inp = $('#cpn', el); inp && inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); actions['coupon-apply'](); } });
@@ -82,9 +118,9 @@ export default async function checkout({ el, onLeave }) {
       else address = { name: d.name, phone: d.phone, line1: d.line1, line2: d.line2, city: d.city, state: d.state, pincode: d.pincode };
       const payment = { method: pay, upiId: d.upiId, cardNumber: d.cardNumber, cardName: d.cardName, expiry: d.expiry, cvv: d.cvv };
       try {
-        const r = await post('/orders', { email: d.email, items: state.cart.map(({ id, size, qty }) => ({ id, size, qty })), coupon: getCoupon(), address, payment, notes: d.notes,
+        const r = await post('/orders', { email: d.email, items: state.cart.map(({ id, size, qty }) => ({ id, size, qty })), coupon: getCoupon(), address, payment, notes: d.notes, location: loc || undefined, idempotencyKey: idemKey,
           fit, measurements: fit === 'custom' ? readMeasureForm(d) : undefined, saveMeasurements: d.saveM === 'on' });
-        clearCart(); setCoupon('');
+        clearCart(); setCoupon(''); try { sessionStorage.removeItem('kb_idem'); } catch { /* ignore */ }
         if (pay === 'razorpay') {
           const qs = state.user ? '' : '?email=' + encodeURIComponent(d.email);
           try { if (!(await payOnline(r.order.number, qs))) toast('Payment not completed — you can pay from your order page.', 'warn'); } catch (e) { toast(e.message, 'warn'); }

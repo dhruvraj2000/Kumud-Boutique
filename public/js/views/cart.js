@@ -13,6 +13,7 @@ export const summary = (q, { editable = true } = {}) => html`
     ${q.twinning ? html`<p class="disc twin"><span>Twinning offer <small>${q.twinPercent}% off ${q.twinPairs > 1 ? q.twinPairs + ' pairs' : 'the pair'}</small></span><b>− ${money(q.twinning)}</b></p>` : ''}
     <p><span>Shipping</span><b>${q.shipping ? money(q.shipping) : 'Free'}</b></p>
     <p class="total"><span>Total</span><b>${money(q.total)}</b></p>
+    ${q.taxIncluded ? html`<p class="muted tax"><span>Includes GST</span><b>${money(q.taxIncluded)}</b></p>` : ''}
   </div>
   ${q.discountLimited ? html`<p class="ship-hint">Your extra discounts were trimmed to stay within this sale's maximum.</p>` : ''}
   ${editable && q.shipping > 0 ? html`<p class="ship-hint">Add ${money(q.freeShippingMin - q.subtotal)} more for free shipping.</p>` : ''}`;

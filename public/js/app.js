@@ -1,5 +1,5 @@
 // App shell: router, page transitions, header/drawer/search behaviour, global click actions.
-import { $, $$, html, render, money, state, subscribe, cartCount, loadUser, get, post, quote, applyQuoteToCart, setQty, removeLine, addToCart, toggleWish, toast, esc, onSubmit } from './core.js';
+import { $, $$, html, render, money, state, subscribe, cartCount, loadUser, get, post, quote, applyQuoteToCart, setQty, removeLine, addToCart, toggleWish, toast, esc, onSubmit, trackVisit } from './core.js';
 import { createLoader } from './loader.js';
 import { loadFestival, maybePopup } from './festival.js';
 import { actions, icon, productIndex, thumb, waLink, pageUrl } from './components.js';
@@ -7,8 +7,8 @@ import { actions, icon, productIndex, thumb, waLink, pageUrl } from './component
 const app = $('#app'), main = $('#main');
 const ROUTES = [
   [/^\/?$/, 'home'], [/^\/shop$/, 'shop'], [/^\/product\/([\w-]+)$/, 'product'], [/^\/cart$/, 'cart'], [/^\/checkout$/, 'checkout'],
-  [/^\/wishlist$/, 'wishlist'], [/^\/(login|register)$/, 'auth'], [/^\/account(?:\/(\w+))?$/, 'account'], [/^\/orders\/([\w-]+)$/, 'order'],
-  [/^\/track$/, 'track'], [/^\/lookbook$/, 'lookbook'], [/^\/twinning$/, 'twinning'], [/^\/(rent|book)$/, 'booking'], [/^\/(about|contact|shipping|size-guide|designer|care|faq|custom)$/, 'info'], [/^\/admin(?:\/(\w+))?$/, 'admin']
+  [/^\/wishlist$/, 'wishlist'], [/^\/(login|register|forgot|reset)$/, 'auth'], [/^\/account(?:\/(\w+))?$/, 'account'], [/^\/orders\/([\w-]+)$/, 'order'],
+  [/^\/track$/, 'track'], [/^\/lookbook$/, 'lookbook'], [/^\/twinning$/, 'twinning'], [/^\/(rent|book)$/, 'booking'], [/^\/(about|contact|shipping|size-guide|designer|care|faq|custom|privacy)$/, 'info'], [/^\/courier$/, 'courier'], [/^\/admin(?:\/(\w+))?$/, 'admin']
 ];
 let leaveFns = [], lastPath = null, navToken = 0;
 const progress = $('#progress');
@@ -47,6 +47,7 @@ async function route() {
   observeReveal(app);
   progress.className = 'progress done';
   maybePopup();
+  trackVisit(path);
   if (!ctx.keepScroll && lastPath !== null) main.focus({ preventScroll: true });
 }
 

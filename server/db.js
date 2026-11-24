@@ -64,6 +64,51 @@ if (!hasCol('products', 'twin_slug')) db.exec("ALTER TABLE products ADD COLUMN t
 if (!hasCol('orders', 'rzp_order_id')) db.exec("ALTER TABLE orders ADD COLUMN rzp_order_id TEXT DEFAULT ''");
 if (!hasCol('orders', 'measurements')) db.exec("ALTER TABLE orders ADD COLUMN measurements TEXT DEFAULT ''");
 
+// v3: security, audit, alerts, tracking, delivery. Additive only.
+for (const [c, d] of [['failed_attempts', 'INTEGER DEFAULT 0'], ['locked_until', 'INTEGER DEFAULT 0'], ['totp_secret', "TEXT DEFAULT ''"], ['totp_enabled', 'INTEGER DEFAULT 0'],
+  ['totp_last', 'INTEGER DEFAULT 0'], ['recovery_codes', "TEXT DEFAULT ''"], ['last_login_at', "TEXT DEFAULT ''"], ['last_login_ip', "TEXT DEFAULT ''"]])
+  if (!hasCol('users', c)) db.exec(`ALTER TABLE users ADD COLUMN ${c} ${d}`);
+for (const [c, d] of [['created_at', 'INTEGER DEFAULT 0'], ['last_seen', 'INTEGER DEFAULT 0'], ['ip', "TEXT DEFAULT ''"], ['ua', "TEXT DEFAULT ''"], ['mfa', 'INTEGER DEFAULT 0']])
+  if (!hasCol('sessions', c)) db.exec(`ALTER TABLE sessions ADD COLUMN ${c} ${d}`);
+for (const [c, d] of [['lat', 'REAL'], ['lng', 'REAL'], ['place_id', "TEXT DEFAULT ''"]]) if (!hasCol('addresses', c)) db.exec(`ALTER TABLE addresses ADD COLUMN ${c} ${d}`);
+for (const [c, d] of [['tax', 'INTEGER DEFAULT 0'], ['idempotency_key', "TEXT DEFAULT ''"], ['closed_as', "TEXT DEFAULT ''"], ['refunded_at', "TEXT DEFAULT ''"]]) if (!hasCol('orders', c)) db.exec(`ALTER TABLE orders ADD COLUMN ${c} ${d}`);
+for (const [c, d] of [['tracking_id', "TEXT DEFAULT ''"], ['delivery_user_id', 'INTEGER'], ['eta', "TEXT DEFAULT ''"], ['dest_lat', 'REAL'], ['dest_lng', 'REAL'], ['place_id', "TEXT DEFAULT ''"],
+  ['distance_km', 'REAL'], ['cancel_reason', "TEXT DEFAULT ''"], ['return_reason', "TEXT DEFAULT ''"], ['delivered_at', "TEXT DEFAULT ''"], ['sharing', 'INTEGER DEFAULT 0']])
+  if (!hasCol('orders', c)) db.exec(`ALTER TABLE orders ADD COLUMN ${c} ${d}`);
+db.exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_tracking ON orders(tracking_id) WHERE tracking_id<>'';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_idem ON orders(idempotency_key) WHERE idempotency_key<>'';
+-- every money movement: provider_ref is unique so one gateway payment can never settle two orders
+CREATE TABLE IF NOT EXISTS payments(
+  id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE, provider TEXT NOT NULL, provider_ref TEXT, kind TEXT NOT NULL DEFAULT 'charge',
+  amount INTEGER NOT NULL, status TEXT NOT NULL, note TEXT DEFAULT '', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pay_ref ON payments(provider, provider_ref, kind) WHERE provider_ref IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pay_order ON payments(order_id);
+CREATE TABLE IF NOT EXISTS courier_locations(
+  id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE, lat REAL NOT NULL, lng REAL NOT NULL,
+  accuracy REAL DEFAULT 0, speed REAL DEFAULT 0, ts INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_courier_order ON courier_locations(order_id, ts);
+CREATE TABLE IF NOT EXISTS customer_notifications(
+  id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, order_number TEXT DEFAULT '', title TEXT NOT NULL, body TEXT DEFAULT '',
+  ts INTEGER NOT NULL, read INTEGER DEFAULT 0);
+CREATE INDEX IF NOT EXISTS idx_cn_user ON customer_notifications(user_id, read);
+CREATE TABLE IF NOT EXISTS security_events(
+  id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, type TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'info', ip TEXT DEFAULT '',
+  user_id INTEGER, email TEXT DEFAULT '', detail TEXT DEFAULT '', ua TEXT DEFAULT '');
+CREATE INDEX IF NOT EXISTS idx_sec_ts ON security_events(ts);
+CREATE INDEX IF NOT EXISTS idx_sec_ip ON security_events(ip, type, ts);
+CREATE TABLE IF NOT EXISTS audit_log(
+  id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, actor_id INTEGER, actor_email TEXT DEFAULT '', action TEXT NOT NULL,
+  target TEXT DEFAULT '', detail TEXT DEFAULT '', ip TEXT DEFAULT '');
+CREATE TABLE IF NOT EXISTS blocked_ips(ip TEXT PRIMARY KEY, until INTEGER NOT NULL, reason TEXT DEFAULT '');
+CREATE TABLE IF NOT EXISTS admin_alerts(
+  id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, severity TEXT NOT NULL, title TEXT NOT NULL, body TEXT DEFAULT '', read INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS error_log(
+  id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, kind TEXT NOT NULL, route TEXT DEFAULT '', status INTEGER DEFAULT 0, ms INTEGER DEFAULT 0, message TEXT DEFAULT '');
+CREATE TABLE IF NOT EXISTS backups(
+  id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, file TEXT NOT NULL, bytes INTEGER DEFAULT 0, ok INTEGER DEFAULT 1, note TEXT DEFAULT '');
+`);
+
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   return { salt, hash: crypto.scryptSync(password, salt, 64).toString('hex') };
 }
@@ -191,7 +236,9 @@ const LOOKS = [
     spots: [] }
 ];
 
-const SETTING_DEFAULTS = { whatsapp: process.env.WHATSAPP_NUMBER || '', twinningPercent: '10' };
+const SETTING_DEFAULTS = { whatsapp: process.env.WHATSAPP_NUMBER || '', twinningPercent: '10',
+  // GST (India, apparel): 5% on items priced up to the threshold, 18% above it; shipping at 18%. Defaults only — confirm the rates with your accountant and change them in Settings.
+  gstLowPercent: '5', gstHighPercent: '18', gstThreshold: '2500' };
 for (const [k, v] of Object.entries(SETTING_DEFAULTS)) db.prepare('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)').run(k, v);
 const getSetting = k => db.prepare('SELECT value FROM settings WHERE key=?').get(k)?.value ?? SETTING_DEFAULTS[k] ?? '';
 const setSetting = (k, v) => db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, String(v));
@@ -210,7 +257,10 @@ function seed() {
   }
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@kumudboutique.com').toLowerCase();
   if (!db.prepare('SELECT 1 FROM users WHERE email=?').get(adminEmail)) {
-    const { salt, hash } = hashPassword(process.env.ADMIN_PASSWORD || 'Admin@12345');
+    // In production never fall back to the password published in the README: generate one and print it once.
+    let adminPw = process.env.ADMIN_PASSWORD;
+    if (!adminPw && process.env.NODE_ENV === 'production') { adminPw = crypto.randomBytes(15).toString('base64url'); console.log(`[security] ADMIN_PASSWORD not set. Generated a one-time admin password for ${adminEmail}: ${adminPw}  (change it after signing in)`); }
+    const { salt, hash } = hashPassword(adminPw || 'Admin@12345');
     db.prepare("INSERT INTO users(name,email,salt,hash,role) VALUES('Kumud Admin',?,?,?, 'admin')").run(adminEmail, salt, hash);
   }
 }
@@ -234,4 +284,4 @@ function tx(fn) {
   try { const r = fn(); db.exec('COMMIT'); return r; } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 
-module.exports = { db, tx, hashPassword, COUPONS, LOOKS, getSetting, setSetting };
+module.exports = { db, DB_FILE, tx, hashPassword, COUPONS, LOOKS, getSetting, setSetting };

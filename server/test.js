@@ -4,12 +4,13 @@ process.env.KUMUD_DB = ':memory:';
 const assert = require('assert');
 const app = require('./server');
 let base;
-const jar = {};
+const jar = {}, csrf = {};
 const call = async (method, url, body, who = 'a') => {
-  const r = await fetch(base + url, { method, headers: { 'Content-Type': 'application/json', Cookie: jar[who] || '' }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(base + url, { method, headers: { 'Content-Type': 'application/json', Cookie: jar[who] || '', ...(csrf[who] ? { 'X-CSRF-Token': csrf[who] } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const sc = r.headers.get('set-cookie');
   if (sc) jar[who] = sc.split(';')[0].endsWith('=') ? '' : sc.split(';')[0];
   const j = await r.json().catch(() => ({}));
+  if (j.csrf) csrf[who] = j.csrf;
   return { s: r.status, j };
 };
 let passed = 0;
@@ -148,7 +149,7 @@ const srv = app.listen(0, async () => {
     assert.equal(g.s, 400); assert.equal(g.j.field, 'm_waist');
   });
   await t('admin settings: whatsapp + twinning percent', async () => {
-    assert.equal((await call('PUT', '/api/admin/settings', { whatsapp: '9876543210', twinningPercent: 10 }, 'g')).s, 403);
+    assert.equal((await call('PUT', '/api/admin/settings', { whatsapp: '9876543210', twinningPercent: 10 }, 'g')).s, 401);
     assert.equal((await call('PUT', '/api/admin/settings', { whatsapp: '12345', twinningPercent: 10 }, 'adm')).j.field, 'whatsapp');
     const r = await call('PUT', '/api/admin/settings', { whatsapp: '98765 43210', twinningPercent: 15 }, 'adm');
     assert.equal(r.j.whatsapp, '919876543210'); assert.equal((await call('GET', '/api/meta')).j.twinningPercent, 15);
